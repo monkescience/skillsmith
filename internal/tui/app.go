@@ -31,6 +31,7 @@ type KeyMap struct {
 	Space       key.Binding
 	SelectAll   key.Binding
 	DeselectAll key.Binding
+	UpdateAll   key.Binding
 	Filter      key.Binding
 	Back        key.Binding
 	Quit        key.Binding
@@ -55,6 +56,9 @@ var keys = KeyMap{
 	),
 	DeselectAll: key.NewBinding(
 		key.WithKeys("d"),
+	),
+	UpdateAll: key.NewBinding(
+		key.WithKeys("u"),
 	),
 	Filter: key.NewBinding(
 		key.WithKeys("f"),
@@ -462,6 +466,8 @@ func (m *Model) updateBrowser(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		for i := range m.browserItems {
 			m.browserItems[i].Selected = false
 		}
+	case key.Matches(msg, keys.UpdateAll):
+		m.updateAllInstalled()
 	case key.Matches(msg, keys.Enter):
 		m.openActionMenu()
 	case key.Matches(msg, keys.Filter):
@@ -554,7 +560,9 @@ func (m *Model) viewBrowser() string {
 	}
 
 	footer.WriteString("\n\n")
-	footer.WriteString(helpStyle.Render("[space] toggle  [a] all  [d] none  [enter] actions  [esc] back  [q] quit"))
+
+	helpText := "[space] toggle  [a/d] all/none  [u] update  [enter] actions  [esc] back  [q] quit"
+	footer.WriteString(helpStyle.Render(helpText))
 
 	return m.renderLayout(header.String(), content.String(), footer.String())
 }
@@ -679,27 +687,25 @@ func (m *Model) openActionMenu() {
 func (m *Model) buildMenuOptions() {
 	m.menuOptions = nil
 
-	selected, installedCount, newCount := m.countSelected()
+	_, installedCount, newCount := m.countSelected()
 
 	if newCount > 0 {
 		m.menuOptions = append(m.menuOptions, MenuOption{
-			Label:   fmt.Sprintf("Install new (%d)", newCount),
-			Action:  "install_new",
+			Label:   fmt.Sprintf("Install (%d new)", newCount),
+			Action:  "install",
 			Count:   newCount,
 			Enabled: true,
 		})
 	}
 
-	if selected > 0 {
+	if installedCount > 0 {
 		m.menuOptions = append(m.menuOptions, MenuOption{
-			Label:   fmt.Sprintf("Reinstall all (%d)", selected),
-			Action:  "reinstall",
-			Count:   selected,
+			Label:   fmt.Sprintf("Update (%d installed)", installedCount),
+			Action:  "update",
+			Count:   installedCount,
 			Enabled: true,
 		})
-	}
 
-	if installedCount > 0 {
 		m.menuOptions = append(m.menuOptions, MenuOption{
 			Label:   fmt.Sprintf("Uninstall (%d)", installedCount),
 			Action:  "uninstall",
@@ -756,32 +762,25 @@ func (m *Model) executeMenuAction() {
 	opt := m.menuOptions[m.menuCursor]
 
 	switch opt.Action {
-	case "install_new":
-		m.installSelected(false)
-	case "reinstall":
-		m.installSelected(true)
+	case "install":
+		m.installNew()
+	case "update":
+		m.updateInstalled()
 	case "uninstall":
 		m.uninstallSelected()
 	}
 }
 
-func (m *Model) installSelected(force bool) {
+func (m *Model) installNew() {
 	installed := 0
-	skipped := 0
 
 	for i, bi := range m.browserItems {
-		if !bi.Selected {
+		// Only install selected items that are not already installed
+		if !bi.Selected || bi.Installed {
 			continue
 		}
 
-		// Skip already installed unless forcing
-		if bi.Installed && !force {
-			skipped++
-
-			continue
-		}
-
-		result, err := installer.Install(bi.Item, m.selectedTool, m.selectedScope, force)
+		result, err := installer.Install(bi.Item, m.selectedTool, m.selectedScope, false)
 		if err != nil {
 			m.message = fmt.Sprintf("Error: %v", err)
 			m.messageStyle = errorMsgStyle
@@ -801,12 +800,75 @@ func (m *Model) installSelected(force bool) {
 	if installed > 0 {
 		m.message = fmt.Sprintf("Installed %d items", installed)
 		m.messageStyle = successMsgStyle
-	} else if skipped > 0 {
-		m.message = fmt.Sprintf("Skipped %d already installed", skipped)
-		m.messageStyle = dimStyle
 	}
 
 	m.screen = ScreenBrowser
+}
+
+func (m *Model) updateInstalled() {
+	updated := 0
+
+	for i, bi := range m.browserItems {
+		// Only update selected items that are already installed
+		if !bi.Selected || !bi.Installed {
+			continue
+		}
+
+		result, err := installer.Install(bi.Item, m.selectedTool, m.selectedScope, true)
+		if err != nil {
+			m.message = fmt.Sprintf("Error: %v", err)
+			m.messageStyle = errorMsgStyle
+			m.screen = ScreenBrowser
+
+			return
+		}
+
+		if result.Success {
+			updated++
+		}
+
+		m.browserItems[i].Selected = false
+	}
+
+	if updated > 0 {
+		m.message = fmt.Sprintf("Updated %d items", updated)
+		m.messageStyle = successMsgStyle
+	}
+
+	m.screen = ScreenBrowser
+}
+
+func (m *Model) updateAllInstalled() {
+	updated := 0
+
+	for i, bi := range m.browserItems {
+		// Update all installed items (regardless of selection)
+		if !bi.Installed {
+			continue
+		}
+
+		result, err := installer.Install(bi.Item, m.selectedTool, m.selectedScope, true)
+		if err != nil {
+			m.message = fmt.Sprintf("Error: %v", err)
+			m.messageStyle = errorMsgStyle
+
+			return
+		}
+
+		if result.Success {
+			updated++
+		}
+
+		m.browserItems[i].Selected = false
+	}
+
+	if updated > 0 {
+		m.message = fmt.Sprintf("Updated %d items", updated)
+		m.messageStyle = successMsgStyle
+	} else {
+		m.message = "No installed items to update"
+		m.messageStyle = dimStyle
+	}
 }
 
 func (m *Model) uninstallSelected() {
