@@ -296,6 +296,24 @@ func (m *Model) renderPreview(width, maxHeight int) string {
 func (m *Model) renderPreviewMetadata(sb *strings.Builder, bi BrowserItem) {
 	bullet := bulletStyle.Render(SymbolBullet) + " "
 
+	// Source
+	sb.WriteString(bullet)
+	sb.WriteString(dimStyle.Render("source: "))
+
+	source := bi.Item.Source
+	if source == "" {
+		source = BuiltinSourceName
+	}
+
+	if source == BuiltinSourceName {
+		sb.WriteString(dimStyle.Render(source))
+	} else {
+		sb.WriteString(accentStyle.Render(source))
+	}
+
+	sb.WriteString("\n")
+
+	// Type
 	sb.WriteString(bullet)
 	sb.WriteString(dimStyle.Render("type: "))
 

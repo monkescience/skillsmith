@@ -171,7 +171,13 @@ func (m *Model) renderItem(sb *strings.Builder, idx int, showDesc bool, maxWidth
 		nameWidth = maxWidth - itemPrefixWidth
 	}
 
-	namePart := fmt.Sprintf(" %-*s", nameWidth, bi.Item.Name)
+	// Add external indicator for non-builtin sources
+	name := bi.Item.Name
+	if bi.Item.Source != "" && bi.Item.Source != BuiltinSourceName {
+		name = bi.Item.Name + SymbolExternal
+	}
+
+	namePart := fmt.Sprintf(" %-*s", nameWidth, name)
 
 	sb.WriteString(cursor)
 	sb.WriteString(checkbox)
