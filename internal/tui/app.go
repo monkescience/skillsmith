@@ -573,15 +573,6 @@ func (m *Model) viewBrowser() string {
 		footer.WriteString(dimStyle.Render("No items selected"))
 	}
 
-	footer.WriteString("\n")
-
-	// Current item path
-	if m.browserCursor < len(m.browserItems) {
-		item := m.browserItems[m.browserCursor].Item
-		path, _ := config.GetInstallPath(item, m.selectedTool, m.selectedScope)
-		footer.WriteString(pathStyle.Render(path))
-	}
-
 	footer.WriteString("\n\n")
 
 	helpText := "[space] toggle  [a/d] all/none  [u] update  [enter] actions  [esc] back  [q] quit"
@@ -728,6 +719,14 @@ func (m *Model) renderPreviewMetadata(sb *strings.Builder, bi BrowserItem) {
 	sb.WriteString(bullet)
 	sb.WriteString(dimStyle.Render("status: "))
 	sb.WriteString(getStatusLabel(bi.Status))
+	sb.WriteString("\n")
+
+	// Path
+	path, _ := config.GetInstallPath(bi.Item, m.selectedTool, m.selectedScope)
+
+	sb.WriteString(bullet)
+	sb.WriteString(dimStyle.Render("path: "))
+	sb.WriteString(pathStyle.Render(path))
 	sb.WriteString("\n\n")
 }
 
