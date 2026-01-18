@@ -200,13 +200,11 @@ func (m *Model) renderLayout(header, content, footer string) string {
 	sb.WriteString(header)
 	sb.WriteString("\n\n")
 
-	// Content (fills middle, with vertical padding)
+	// Content (fills middle) - content is pre-padded
 	contentLines := strings.Count(content, "\n") + 1
+	sb.WriteString(content)
 
-	// Add left padding to each content line
-	for line := range strings.SplitSeq(content, "\n") {
-		sb.WriteString(leftPad)
-		sb.WriteString(line)
+	if !strings.HasSuffix(content, "\n") {
 		sb.WriteString("\n")
 	}
 
@@ -216,9 +214,15 @@ func (m *Model) renderLayout(header, content, footer string) string {
 		sb.WriteString("\n")
 	}
 
-	// Footer (pinned bottom)
-	sb.WriteString(leftPad)
-	sb.WriteString(footer)
+	// Footer (pinned bottom) - add left padding to each line
+	for i, line := range strings.Split(footer, "\n") {
+		if i > 0 {
+			sb.WriteString("\n")
+		}
+
+		sb.WriteString(leftPad)
+		sb.WriteString(line)
+	}
 
 	return sb.String()
 }
@@ -307,7 +311,12 @@ func (m *Model) viewToolSelect() string {
 	// Footer
 	footer := helpStyle.Render("[enter] select  [q] quit")
 
-	return m.renderLayout(header, content.String(), footer)
+	// Add left margin to content
+	paddedContent := lipgloss.NewStyle().
+		MarginLeft(mainLeftPadding).
+		Render(content.String())
+
+	return m.renderLayout(header, paddedContent, footer)
 }
 
 // =============================================================================
@@ -386,7 +395,12 @@ func (m *Model) viewScopeSelect() string {
 	// Footer
 	footer := helpStyle.Render("[enter] select  [esc] back  [q] quit")
 
-	return m.renderLayout(header.String(), content.String(), footer)
+	// Add left margin to content
+	paddedContent := lipgloss.NewStyle().
+		MarginLeft(mainLeftPadding).
+		Render(content.String())
+
+	return m.renderLayout(header.String(), paddedContent, footer)
 }
 
 func (m *Model) getLocalPath() string {
@@ -591,12 +605,15 @@ func (m *Model) renderListOnly() string {
 		content.WriteString("\n")
 	}
 
-	return content.String()
+	// Add left padding using lipgloss
+	return lipgloss.NewStyle().
+		MarginLeft(mainLeftPadding).
+		Render(content.String())
 }
 
 func (m *Model) renderSplitView() string {
 	// Calculate widths: list 40%, sidebar 60%
-	availableWidth := m.width - mainLeftPaddingTotal // Account for left padding
+	availableWidth := m.width - mainLeftPaddingTotal // Account for margins
 	listWidth := (availableWidth * listWidthPercent) / percentDivisor
 	sidebarWidth := availableWidth - listWidth - 1 // -1 for gap between panels
 
@@ -620,9 +637,10 @@ func (m *Model) renderSplitView() string {
 	// Render preview/sidebar content
 	previewContent := m.renderPreview(sidebarInnerWidth)
 
-	// Create styled panels
+	// Create styled panels - list panel with left margin
 	listPanel := lipgloss.NewStyle().
 		Width(listWidth).
+		MarginLeft(mainLeftPadding).
 		Render(listContent.String())
 
 	// Sidebar with border (OpenCode style)
@@ -1226,7 +1244,12 @@ func (m *Model) viewActionMenu() string {
 		menuContent.WriteString("\n")
 	}
 
-	content := menuBoxStyle.Render(menuContent.String())
+	menuBox := menuBoxStyle.Render(menuContent.String())
+
+	// Add left margin to content
+	content := lipgloss.NewStyle().
+		MarginLeft(mainLeftPadding).
+		Render(menuBox)
 
 	// Footer
 	footer := helpStyle.Render("[enter] confirm  [esc] cancel")
