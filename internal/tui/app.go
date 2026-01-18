@@ -186,6 +186,19 @@ func (m *Model) View() string {
 	}
 }
 
+// renderFullScreen renders content in a box that fills the terminal.
+func (m *Model) renderFullScreen(content string) string {
+	// Account for border (2) and padding (2 top/bottom from boxInnerPadding via Padding(1, ...))
+	// Border takes 2 lines (top + bottom), padding adds 1 line each side = 4 total
+	boxChrome := 4
+	innerHeight := max(m.height-boxChrome, 1)
+
+	return boxStyle.
+		Width(m.width - boxPadding).
+		Height(innerHeight).
+		Render(content)
+}
+
 // =============================================================================
 // Tool Selection Screen
 // =============================================================================
@@ -252,7 +265,7 @@ func (m *Model) viewToolSelect() string {
 	sb.WriteString("\n")
 	sb.WriteString(helpStyle.Render("[enter] select  [q] quit"))
 
-	return boxStyle.Width(m.width - boxPadding).Render(sb.String())
+	return m.renderFullScreen(sb.String())
 }
 
 // =============================================================================
@@ -329,7 +342,7 @@ func (m *Model) viewScopeSelect() string {
 	sb.WriteString("\n")
 	sb.WriteString(helpStyle.Render("[enter] select  [esc] back  [q] quit"))
 
-	return boxStyle.Width(m.width - boxPadding).Render(sb.String())
+	return m.renderFullScreen(sb.String())
 }
 
 func (m *Model) getLocalPath() string {
@@ -508,7 +521,7 @@ func (m *Model) viewBrowser() string {
 	sb.WriteString("\n\n")
 	sb.WriteString(helpStyle.Render("[space] toggle  [a] all  [d] none  [enter] actions  [esc] back  [q] quit"))
 
-	return boxStyle.Width(m.width - boxPadding).Render(sb.String())
+	return m.renderFullScreen(sb.String())
 }
 
 func (m *Model) renderVisibleItems(sb *strings.Builder, visible int) {
@@ -836,5 +849,5 @@ func (m *Model) viewActionMenu() string {
 
 	sb.WriteString(menuBoxStyle.Render(menuContent.String()))
 
-	return boxStyle.Width(m.width - boxPadding).Render(sb.String())
+	return m.renderFullScreen(sb.String())
 }
