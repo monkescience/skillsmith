@@ -4,115 +4,85 @@ import "github.com/charmbracelet/lipgloss"
 
 // Layout constants.
 const (
-	listWidthRatio  = 3
-	borderPadding   = 4
-	borderMargin    = 2
-	headerHeight    = 6
-	listPadding     = 8
-	itemLevel       = 2
-	helpPadding     = 2
-	statusBarGapMin = 0
+	boxPadding       = 4
+	boxInnerPadding  = 2
+	descPaddingWidth = 50
 )
 
-var (
-	// Colors.
-	primaryColor   = lipgloss.Color("#7C3AED") // Purple
-	secondaryColor = lipgloss.Color("#10B981") // Green
-	mutedColor     = lipgloss.Color("#6B7280") // Gray
-	errorColor     = lipgloss.Color("#EF4444") // Red
-	successColor   = lipgloss.Color("#10B981") // Green
-	warningColor   = lipgloss.Color("#F59E0B") // Amber
+// Scope labels.
+const (
+	LabelLocal  = "Local"
+	LabelGlobal = "Global"
+)
 
-	// Base styles.
+// Monochrome color palette.
+var (
+	white     = lipgloss.Color("#FFFFFF")
+	lightGray = lipgloss.Color("#AAAAAA")
+	gray      = lipgloss.Color("#666666")
+	black     = lipgloss.Color("#000000")
+	green     = lipgloss.Color("#00AA00") // For success/installed indicators
+	red       = lipgloss.Color("#AA0000") // For errors
+)
+
+// Base styles.
+var (
 	titleStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(primaryColor).
-			MarginBottom(1)
-
-	subtitleStyle = lipgloss.NewStyle().
-			Foreground(mutedColor).
-			Italic(true)
+			Foreground(white)
 
 	// List styles.
-	selectedItemStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#FFFFFF")).
-				Background(primaryColor).
-				Padding(0, 1)
+	selectedStyle = lipgloss.NewStyle().
+			Foreground(black).
+			Background(white)
 
-	normalItemStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#FFFFFF")).
-			Padding(0, 1)
+	normalStyle = lipgloss.NewStyle().
+			Foreground(lightGray)
 
-	// Category/folder styles.
-	categoryStyle = lipgloss.NewStyle().
+	dimStyle = lipgloss.NewStyle().
+			Foreground(gray)
+
+	// Category/header styles.
+	headerStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(secondaryColor)
+			Foreground(white)
 
-	// Preview pane styles.
-	previewTitleStyle = lipgloss.NewStyle().
-				Bold(true).
-				Foreground(primaryColor).
-				BorderStyle(lipgloss.NormalBorder()).
-				BorderBottom(true).
-				BorderForeground(mutedColor).
-				MarginBottom(1).
-				PaddingBottom(1)
+	// Status indicators.
+	installedStyle = lipgloss.NewStyle().
+			Foreground(green)
 
-	previewContentStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("#E5E7EB"))
+	errorMsgStyle = lipgloss.NewStyle().
+			Foreground(red)
 
-	// Status bar styles.
-	statusBarStyle = lipgloss.NewStyle().
-			Foreground(mutedColor).
-			Background(lipgloss.Color("#1F2937")).
-			Padding(0, 1)
+	successMsgStyle = lipgloss.NewStyle().
+			Foreground(green)
 
-	// Border styles.
-	listBorderStyle = lipgloss.NewStyle().
+	// Box/border styles.
+	boxStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(mutedColor).
-			Padding(1)
+			BorderForeground(gray).
+			Padding(1, boxInnerPadding)
 
-	previewBorderStyle = lipgloss.NewStyle().
-				Border(lipgloss.RoundedBorder()).
-				BorderForeground(mutedColor).
-				Padding(1)
+	menuBoxStyle = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lightGray).
+			Padding(1, boxInnerPadding)
 
-	// Tag styles.
-	tagStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#FFFFFF")).
-			Background(mutedColor).
-			Padding(0, 1).
-			MarginRight(1)
+	// Path display.
+	pathStyle = lipgloss.NewStyle().
+			Foreground(lightGray)
 
-	// Message styles.
-	errorStyle = lipgloss.NewStyle().
-			Foreground(errorColor).
-			Bold(true)
-
-	successStyle = lipgloss.NewStyle().
-			Foreground(successColor).
-			Bold(true)
-
-	warningStyle = lipgloss.NewStyle().
-			Foreground(warningColor)
-
-	// Help styles.
+	// Help text.
 	helpStyle = lipgloss.NewStyle().
-			Foreground(mutedColor)
-
-	helpKeyStyle = lipgloss.NewStyle().
-			Foreground(primaryColor)
+			Foreground(gray)
 )
 
-// TypeIcon returns an icon for item types.
-func TypeIcon(itemType string) string {
-	switch itemType {
-	case "agent":
-		return ""
-	case "skill":
-		return ""
-	default:
-		return ""
-	}
-}
+// Symbols.
+const (
+	SymbolSelected   = "[x]"
+	SymbolUnselected = "[ ]"
+	SymbolInstalled  = "✓"
+	SymbolCursor     = ">"
+	SymbolAgent      = "◆"
+	SymbolSkill      = "○"
+)

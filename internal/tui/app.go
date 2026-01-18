@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
@@ -14,119 +13,112 @@ import (
 	"github.com/monke/skillsmith/internal/registry"
 )
 
-// KeyMap defines the keybindings for the app.
+// Screen represents the current screen/state.
+type Screen int
+
+const (
+	ScreenToolSelect Screen = iota
+	ScreenScopeSelect
+	ScreenBrowser
+	ScreenActionMenu
+)
+
+// KeyMap defines the keybindings.
 type KeyMap struct {
 	Up     key.Binding
 	Down   key.Binding
-	Left   key.Binding
-	Right  key.Binding
 	Enter  key.Binding
-	One    key.Binding
-	Two    key.Binding
-	Global key.Binding
-	Toggle key.Binding
-	Help   key.Binding
+	Space  key.Binding
+	Filter key.Binding
+	Back   key.Binding
 	Quit   key.Binding
-	Tab    key.Binding
+	Help   key.Binding
 }
 
-var defaultKeyMap = KeyMap{
+var keys = KeyMap{
 	Up: key.NewBinding(
 		key.WithKeys("up", "k"),
-		key.WithHelp("↑/k", "up"),
 	),
 	Down: key.NewBinding(
 		key.WithKeys("down", "j"),
-		key.WithHelp("↓/j", "down"),
-	),
-	Left: key.NewBinding(
-		key.WithKeys("left", "h"),
-		key.WithHelp("←/h", "collapse"),
-	),
-	Right: key.NewBinding(
-		key.WithKeys("right", "l"),
-		key.WithHelp("→/l", "expand"),
 	),
 	Enter: key.NewBinding(
 		key.WithKeys("enter"),
-		key.WithHelp("enter", "install"),
 	),
-	One: key.NewBinding(
-		key.WithKeys("1"),
-		key.WithHelp("1", "install opencode"),
-	),
-	Two: key.NewBinding(
-		key.WithKeys("2"),
-		key.WithHelp("2", "install claude"),
-	),
-	Global: key.NewBinding(
-		key.WithKeys("g"),
-		key.WithHelp("g", "toggle global"),
-	),
-	Toggle: key.NewBinding(
+	Space: key.NewBinding(
 		key.WithKeys(" "),
-		key.WithHelp("space", "toggle"),
 	),
-	Help: key.NewBinding(
-		key.WithKeys("?"),
-		key.WithHelp("?", "help"),
+	Filter: key.NewBinding(
+		key.WithKeys("f"),
+	),
+	Back: key.NewBinding(
+		key.WithKeys("esc"),
 	),
 	Quit: key.NewBinding(
 		key.WithKeys("q", "ctrl+c"),
-		key.WithHelp("q", "quit"),
 	),
-	Tab: key.NewBinding(
-		key.WithKeys("tab"),
-		key.WithHelp("tab", "next pane"),
+	Help: key.NewBinding(
+		key.WithKeys("?"),
 	),
 }
 
-// TreeNode represents a node in the tree view.
-type TreeNode struct {
-	Name     string
-	Item     *registry.Item // nil for category nodes
-	Children []*TreeNode
-	Expanded bool
-	Level    int
+// BrowserItem represents an item in the browser list.
+type BrowserItem struct {
+	Item      registry.Item
+	Selected  bool
+	Installed bool
 }
 
-// Focus represents which pane has focus.
-type Focus int
+// MenuOption represents an option in the action menu.
+type MenuOption struct {
+	Label   string
+	Action  string
+	Count   int
+	Enabled bool
+}
 
-const (
-	FocusList Focus = iota
-	FocusPreview
-)
-
-// Model is the main Bubbletea model.
+// Model is the main application model.
 type Model struct {
-	registry     *registry.Registry
-	tree         []*TreeNode
-	flatList     []*TreeNode // flattened visible nodes
-	cursor       int
-	focus        Focus
-	viewport     viewport.Model
-	width        int
-	height       int
-	keys         KeyMap
+	registry *registry.Registry
+	screen   Screen
+	width    int
+	height   int
+	ready    bool
+
+	// Tool selection
+	tools      []registry.Tool
+	toolCursor int
+
+	// Scope selection
+	scopes      []config.Scope
+	scopeCursor int
+
+	// Current selections
+	selectedTool  registry.Tool
+	selectedScope config.Scope
+
+	// Browser state
+	browserItems  []BrowserItem
+	browserCursor int
+	showAll       bool // false = only compatible, true = all
+
+	// Action menu state
+	menuOptions []MenuOption
+	menuCursor  int
+
+	// Messages
 	message      string
 	messageStyle lipgloss.Style
-	showHelp     bool
-	ready        bool
-	globalScope  bool // toggle for global vs local install
 }
 
 // NewModel creates a new Model.
 func NewModel(reg *registry.Registry) *Model {
-	m := &Model{
-		registry:    reg,
-		keys:        defaultKeyMap,
-		focus:       FocusList,
-		globalScope: false,
+	return &Model{
+		registry: reg,
+		screen:   ScreenToolSelect,
+		tools:    registry.AllTools(),
+		scopes:   []config.Scope{config.ScopeLocal, config.ScopeGlobal},
 	}
-	m.buildTree()
-
-	return m
 }
 
 // Init initializes the model.
@@ -138,11 +130,27 @@ func (m *Model) Init() tea.Cmd {
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.handleWindowSize(msg)
+		m.width = msg.Width
+		m.height = msg.Height
+		m.ready = true
 
 	case tea.KeyMsg:
-		if cmd := m.handleKeyMsg(msg); cmd != nil {
-			return m, cmd
+		// Clear message on key press
+		m.message = ""
+
+		if key.Matches(msg, keys.Quit) {
+			return m, tea.Quit
+		}
+
+		switch m.screen {
+		case ScreenToolSelect:
+			return m.updateToolSelect(msg)
+		case ScreenScopeSelect:
+			return m.updateScopeSelect(msg)
+		case ScreenBrowser:
+			return m.updateBrowser(msg)
+		case ScreenActionMenu:
+			return m.updateActionMenu(msg)
 		}
 	}
 
@@ -152,568 +160,644 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // View renders the UI.
 func (m *Model) View() string {
 	if !m.ready {
-		return "Initializing..."
+		return "Loading..."
 	}
 
-	if m.showHelp {
-		return m.renderHelp()
+	switch m.screen {
+	case ScreenToolSelect:
+		return m.viewToolSelect()
+	case ScreenScopeSelect:
+		return m.viewScopeSelect()
+	case ScreenBrowser:
+		return m.viewBrowser()
+	case ScreenActionMenu:
+		return m.viewActionMenu()
+	default:
+		return "Unknown screen"
 	}
-
-	// Calculate dimensions
-	listWidth := m.width / listWidthRatio
-	previewWidth := m.width - listWidth - borderPadding
-
-	// Render header
-	header := titleStyle.Render("skillsmith")
-	header += "  " + subtitleStyle.Render("Install agents & skills for AI coding tools")
-
-	scopeIndicator := " [local]"
-	if m.globalScope {
-		scopeIndicator = " [GLOBAL]"
-	}
-
-	header += helpStyle.Render(scopeIndicator)
-
-	// Render list
-	listContent := m.renderList(listWidth - borderMargin)
-	listStyle := listBorderStyle.Width(listWidth - borderMargin).Height(m.height - headerHeight)
-
-	if m.focus == FocusList {
-		listStyle = listStyle.BorderForeground(primaryColor)
-	}
-
-	list := listStyle.Render(listContent)
-
-	// Render preview
-	previewStyle := previewBorderStyle.Width(previewWidth - borderMargin).Height(m.height - headerHeight)
-
-	if m.focus == FocusPreview {
-		previewStyle = previewStyle.BorderForeground(primaryColor)
-	}
-
-	preview := previewStyle.Render(m.viewport.View())
-
-	// Combine list and preview
-	content := lipgloss.JoinHorizontal(lipgloss.Top, list, preview)
-
-	// Render status bar
-	statusBar := m.renderStatusBar()
-
-	// Combine all
-	return lipgloss.JoinVertical(lipgloss.Left, header, content, statusBar)
 }
 
-func (m *Model) handleWindowSize(msg tea.WindowSizeMsg) {
-	m.width = msg.Width
-	m.height = msg.Height
+// =============================================================================
+// Tool Selection Screen
+// =============================================================================
 
-	// Initialize or update viewport
-	headerHeight := 3
-	footerHeight := 2
-	listWidth := m.width / listWidthRatio
-	previewWidth := m.width - listWidth - borderPadding
-
-	if !m.ready {
-		m.viewport = viewport.New(previewWidth, m.height-headerHeight-footerHeight)
-		m.viewport.Style = previewContentStyle
-		m.ready = true
-	} else {
-		m.viewport.Width = previewWidth
-		m.viewport.Height = m.height - headerHeight - footerHeight
-	}
-
-	m.updatePreview()
-}
-
-func (m *Model) handleKeyMsg(msg tea.KeyMsg) tea.Cmd {
-	// Clear message on any key press
-	m.message = ""
-
+func (m *Model) updateToolSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch {
-	case key.Matches(msg, m.keys.Quit):
-		return tea.Quit
-
-	case key.Matches(msg, m.keys.Help):
-		m.showHelp = !m.showHelp
-
-	case key.Matches(msg, m.keys.Tab):
-		m.toggleFocus()
-
-	case key.Matches(msg, m.keys.Up):
-		m.handleUp()
-
-	case key.Matches(msg, m.keys.Down):
-		m.handleDown()
-
-	case key.Matches(msg, m.keys.Left):
-		m.handleLeft()
-
-	case key.Matches(msg, m.keys.Right), key.Matches(msg, m.keys.Toggle):
-		m.handleRight()
-
-	case key.Matches(msg, m.keys.Global):
-		m.globalScope = !m.globalScope
-		m.updatePreview()
-
-	case key.Matches(msg, m.keys.One):
-		m.installForTool(registry.ToolOpenCode)
-
-	case key.Matches(msg, m.keys.Two):
-		m.installForTool(registry.ToolClaude)
-
-	case key.Matches(msg, m.keys.Enter):
-		// Install for first compatible tool
-		m.installForFirstCompatibleTool()
-	}
-
-	return nil
-}
-
-func (m *Model) toggleFocus() {
-	if m.focus == FocusList {
-		m.focus = FocusPreview
-	} else {
-		m.focus = FocusList
-	}
-}
-
-func (m *Model) handleUp() {
-	if m.focus == FocusList {
-		if m.cursor > 0 {
-			m.cursor--
-			m.updatePreview()
+	case key.Matches(msg, keys.Up):
+		if m.toolCursor > 0 {
+			m.toolCursor--
 		}
-	} else {
-		m.viewport.ScrollUp(1)
-	}
-}
-
-func (m *Model) handleDown() {
-	if m.focus == FocusList {
-		if m.cursor < len(m.flatList)-1 {
-			m.cursor++
-			m.updatePreview()
+	case key.Matches(msg, keys.Down):
+		if m.toolCursor < len(m.tools)-1 {
+			m.toolCursor++
 		}
-	} else {
-		m.viewport.ScrollDown(1)
+	case key.Matches(msg, keys.Enter):
+		m.selectedTool = m.tools[m.toolCursor]
+		m.screen = ScreenScopeSelect
+		m.scopeCursor = 0
 	}
+
+	return m, nil
 }
 
-func (m *Model) handleLeft() {
-	if m.focus != FocusList {
-		return
-	}
+func (m *Model) viewToolSelect() string {
+	var sb strings.Builder
 
-	node := m.flatList[m.cursor]
-	if node.Expanded && len(node.Children) > 0 {
-		node.Expanded = false
+	sb.WriteString(titleStyle.Render("skillsmith"))
+	sb.WriteString("\n\n")
+	sb.WriteString("Select target tool:\n\n")
 
-		m.updateFlatList()
-	}
-}
+	for i, tool := range m.tools {
+		cursor := "  "
+		if i == m.toolCursor {
+			cursor = SymbolCursor + " "
+		}
 
-func (m *Model) handleRight() {
-	if m.focus != FocusList {
-		return
-	}
+		// Count compatible items
+		items := m.registry.ByTool(tool)
+		agents := 0
+		skills := 0
 
-	node := m.flatList[m.cursor]
-	if len(node.Children) > 0 {
-		node.Expanded = !node.Expanded
-
-		m.updateFlatList()
-	}
-}
-
-// buildTree constructs the tree structure from the registry.
-// Groups by type (Agents, Skills) instead of by tool.
-func (m *Model) buildTree() {
-	// Create type nodes
-	agentsNode := &TreeNode{
-		Name:     "Agents",
-		Expanded: true,
-		Level:    0,
-	}
-
-	skillsNode := &TreeNode{
-		Name:     "Skills",
-		Expanded: true,
-		Level:    0,
-	}
-
-	// Add agents
-	agents := m.registry.ByType(registry.ItemTypeAgent)
-	for i := range agents {
-		item := agents[i]
-		agentsNode.Children = append(agentsNode.Children, &TreeNode{
-			Name:  item.Name,
-			Item:  &item,
-			Level: 1,
-		})
-	}
-
-	// Add skills
-	skills := m.registry.ByType(registry.ItemTypeSkill)
-	for i := range skills {
-		item := skills[i]
-		skillsNode.Children = append(skillsNode.Children, &TreeNode{
-			Name:  item.Name,
-			Item:  &item,
-			Level: 1,
-		})
-	}
-
-	if len(agentsNode.Children) > 0 {
-		m.tree = append(m.tree, agentsNode)
-	}
-
-	if len(skillsNode.Children) > 0 {
-		m.tree = append(m.tree, skillsNode)
-	}
-
-	m.updateFlatList()
-}
-
-// updateFlatList flattens the tree based on expanded states.
-func (m *Model) updateFlatList() {
-	m.flatList = nil
-
-	var flatten func(nodes []*TreeNode)
-
-	flatten = func(nodes []*TreeNode) {
-		for _, node := range nodes {
-			m.flatList = append(m.flatList, node)
-
-			if node.Expanded && len(node.Children) > 0 {
-				flatten(node.Children)
+		for _, item := range items {
+			if item.Type == registry.ItemTypeAgent {
+				agents++
+			} else {
+				skills++
 			}
 		}
-	}
 
-	flatten(m.tree)
-}
+		line := fmt.Sprintf("%s%s", cursor, tool)
+		stats := dimStyle.Render(fmt.Sprintf("  %d agents, %d skills", agents, skills))
 
-// installForTool installs the currently selected item for a specific tool.
-func (m *Model) installForTool(tool registry.Tool) {
-	if m.cursor >= len(m.flatList) {
-		return
-	}
-
-	node := m.flatList[m.cursor]
-	if node.Item == nil {
-		m.message = "Select an item to install"
-		m.messageStyle = warningStyle
-
-		return
-	}
-
-	if !node.Item.IsCompatibleWith(tool) {
-		m.message = fmt.Sprintf("%s is not compatible with %s", node.Item.Name, tool)
-		m.messageStyle = warningStyle
-
-		return
-	}
-
-	scope := config.ScopeLocal
-	if m.globalScope {
-		scope = config.ScopeGlobal
-	}
-
-	result, err := installer.Install(*node.Item, tool, scope, false)
-	if err != nil {
-		m.message = fmt.Sprintf("Error: %v", err)
-		m.messageStyle = errorStyle
-
-		return
-	}
-
-	if result.Success {
-		scopeStr := "locally"
-		if m.globalScope {
-			scopeStr = "globally"
+		if i == m.toolCursor {
+			sb.WriteString(selectedStyle.Render(line))
+			sb.WriteString(stats)
+		} else {
+			sb.WriteString(normalStyle.Render(line))
+			sb.WriteString(stats)
 		}
 
-		m.message = fmt.Sprintf("Installed %s for %s %s", node.Item.Name, tool, scopeStr)
-		m.messageStyle = successStyle
-	} else {
-		m.message = fmt.Sprintf("%s: %s", node.Item.Name, result.Message)
-		m.messageStyle = warningStyle
+		sb.WriteString("\n")
 	}
 
-	m.updatePreview()
+	sb.WriteString("\n")
+	sb.WriteString(helpStyle.Render("[enter] select  [q] quit"))
+
+	return boxStyle.Width(m.width - boxPadding).Render(sb.String())
 }
 
-// installForFirstCompatibleTool installs for the first compatible tool.
-func (m *Model) installForFirstCompatibleTool() {
-	if m.cursor >= len(m.flatList) {
-		return
+// =============================================================================
+// Scope Selection Screen
+// =============================================================================
+
+func (m *Model) updateScopeSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch {
+	case key.Matches(msg, keys.Up):
+		if m.scopeCursor > 0 {
+			m.scopeCursor--
+		}
+	case key.Matches(msg, keys.Down):
+		if m.scopeCursor < len(m.scopes)-1 {
+			m.scopeCursor++
+		}
+	case key.Matches(msg, keys.Enter):
+		m.selectedScope = m.scopes[m.scopeCursor]
+		m.loadBrowserItems()
+		m.screen = ScreenBrowser
+		m.browserCursor = 0
+	case key.Matches(msg, keys.Back):
+		m.screen = ScreenToolSelect
 	}
 
-	node := m.flatList[m.cursor]
-	if node.Item == nil {
-		m.message = "Select an item to install"
-		m.messageStyle = warningStyle
-
-		return
-	}
-
-	if len(node.Item.Compatibility) == 0 {
-		m.message = "No compatible tools for this item"
-		m.messageStyle = warningStyle
-
-		return
-	}
-
-	m.installForTool(node.Item.Compatibility[0])
+	return m, nil
 }
 
-// updatePreview updates the preview viewport content.
-func (m *Model) updatePreview() {
-	if m.cursor >= len(m.flatList) {
-		return
-	}
-
-	node := m.flatList[m.cursor]
-	if node.Item == nil {
-		// Show category info
-		m.viewport.SetContent(m.renderCategoryPreview(node))
-	} else {
-		m.viewport.SetContent(m.renderItemPreview(node.Item))
-	}
-}
-
-// renderCategoryPreview renders preview for a category node.
-func (m *Model) renderCategoryPreview(node *TreeNode) string {
+func (m *Model) viewScopeSelect() string {
 	var sb strings.Builder
 
-	title := previewTitleStyle.Render(node.Name)
-	sb.WriteString(title)
+	// Header with breadcrumb
+	sb.WriteString(titleStyle.Render("skillsmith"))
+	sb.WriteString(dimStyle.Render(" > "))
+	sb.WriteString(normalStyle.Render(string(m.selectedTool)))
 	sb.WriteString("\n\n")
 
-	childCount := len(node.Children)
-	if childCount > 0 {
-		sb.WriteString(fmt.Sprintf("%d items\n", childCount))
+	sb.WriteString("Install location:\n\n")
+
+	for i, scope := range m.scopes {
+		cursor := "  "
+		if i == m.scopeCursor {
+			cursor = SymbolCursor + " "
+		}
+
+		var label, path string
+
+		switch scope {
+		case config.ScopeLocal:
+			label = LabelLocal
+			path = m.getLocalPath()
+		case config.ScopeGlobal:
+			label = LabelGlobal
+			path = m.getGlobalPath()
+		}
+
+		// Count installed for this scope
+		installed := m.countInstalled(scope)
+
+		line := fmt.Sprintf("%s%-8s", cursor, label)
+		pathInfo := dimStyle.Render(fmt.Sprintf("%s  (%d installed)", path, installed))
+
+		if i == m.scopeCursor {
+			sb.WriteString(selectedStyle.Render(line))
+			sb.WriteString(pathInfo)
+		} else {
+			sb.WriteString(normalStyle.Render(line))
+			sb.WriteString(pathInfo)
+		}
+
+		sb.WriteString("\n")
 	}
 
-	return sb.String()
+	sb.WriteString("\n")
+	sb.WriteString(helpStyle.Render("[enter] select  [esc] back  [q] quit"))
+
+	return boxStyle.Width(m.width - boxPadding).Render(sb.String())
 }
 
-// renderItemPreview renders preview for an item.
-func (m *Model) renderItemPreview(item *registry.Item) string {
+func (m *Model) getLocalPath() string {
+	paths, err := config.GetPaths(m.selectedTool)
+	if err != nil {
+		return "./"
+	}
+
+	return paths.LocalDir + "/"
+}
+
+func (m *Model) getGlobalPath() string {
+	paths, err := config.GetPaths(m.selectedTool)
+	if err != nil {
+		return "~/"
+	}
+
+	return paths.GlobalDir + "/"
+}
+
+func (m *Model) countInstalled(scope config.Scope) int {
+	count := 0
+	items := m.registry.ByTool(m.selectedTool)
+
+	for _, item := range items {
+		installed, _, _ := installer.IsInstalled(item, m.selectedTool, scope)
+		if installed {
+			count++
+		}
+	}
+
+	return count
+}
+
+func (m *Model) getScopeLabel() string {
+	if m.selectedScope == config.ScopeGlobal {
+		return LabelGlobal
+	}
+
+	return LabelLocal
+}
+
+// =============================================================================
+// Browser Screen
+// =============================================================================
+
+func (m *Model) loadBrowserItems() {
+	m.browserItems = nil
+
+	items := m.registry.ByTool(m.selectedTool)
+
+	for _, item := range items {
+		installed, _, _ := installer.IsInstalled(item, m.selectedTool, m.selectedScope)
+		m.browserItems = append(m.browserItems, BrowserItem{
+			Item:      item,
+			Selected:  false,
+			Installed: installed,
+		})
+	}
+}
+
+func (m *Model) updateBrowser(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch {
+	case key.Matches(msg, keys.Up):
+		if m.browserCursor > 0 {
+			m.browserCursor--
+		}
+	case key.Matches(msg, keys.Down):
+		if m.browserCursor < len(m.browserItems)-1 {
+			m.browserCursor++
+		}
+	case key.Matches(msg, keys.Space):
+		if m.browserCursor < len(m.browserItems) {
+			m.browserItems[m.browserCursor].Selected = !m.browserItems[m.browserCursor].Selected
+		}
+	case key.Matches(msg, keys.Enter):
+		m.openActionMenu()
+	case key.Matches(msg, keys.Filter):
+		m.showAll = !m.showAll
+	case key.Matches(msg, keys.Back):
+		m.screen = ScreenScopeSelect
+	}
+
+	return m, nil
+}
+
+func (m *Model) viewBrowser() string {
 	var sb strings.Builder
 
-	m.writeItemHeader(&sb, item)
-	m.writeItemCompatibility(&sb, item)
-	m.writeItemTags(&sb, item)
-	m.writeItemInstallStatus(&sb, item)
-
-	// Content preview
-	sb.WriteString("\n")
-	sb.WriteString(categoryStyle.Render("Content:"))
-	sb.WriteString("\n")
-	sb.WriteString(item.Body)
-
-	return sb.String()
-}
-
-func (m *Model) writeItemHeader(sb *strings.Builder, item *registry.Item) {
-	// Title
-	title := previewTitleStyle.Render(fmt.Sprintf("%s %s", TypeIcon(string(item.Type)), item.Name))
-	sb.WriteString(title)
-	sb.WriteString("\n")
-
-	// Description
-	sb.WriteString(subtitleStyle.Render(item.Description))
+	// Header with breadcrumb
+	sb.WriteString(titleStyle.Render("skillsmith"))
+	sb.WriteString(dimStyle.Render(" > "))
+	sb.WriteString(normalStyle.Render(string(m.selectedTool)))
+	sb.WriteString(dimStyle.Render(" > "))
+	sb.WriteString(normalStyle.Render(m.getScopeLabel()))
 	sb.WriteString("\n\n")
 
-	// Metadata
-	fmt.Fprintf(sb, "Type: %s\n", item.Type)
+	// Group by type
+	agents := m.filterByType(registry.ItemTypeAgent)
+	skills := m.filterByType(registry.ItemTypeSkill)
 
-	if item.Category != "" {
-		fmt.Fprintf(sb, "Category: %s\n", item.Category)
+	if len(agents) > 0 {
+		sb.WriteString(headerStyle.Render("Agents:"))
+		sb.WriteString("\n")
+		m.renderItems(&sb, agents)
+		sb.WriteString("\n")
 	}
 
-	if item.Author != "" {
-		fmt.Fprintf(sb, "Author: %s\n", item.Author)
+	if len(skills) > 0 {
+		sb.WriteString(headerStyle.Render("Skills:"))
+		sb.WriteString("\n")
+		m.renderItems(&sb, skills)
 	}
+
+	// Status line
+	sb.WriteString("\n")
+
+	selected, installedCount, newCount := m.countSelected()
+
+	if selected > 0 {
+		status := fmt.Sprintf("%d selected (%d installed, %d new)", selected, installedCount, newCount)
+		sb.WriteString(normalStyle.Render(status))
+	} else {
+		sb.WriteString(dimStyle.Render("No items selected"))
+	}
+
+	sb.WriteString("\n")
+
+	// Current item path
+	if m.browserCursor < len(m.browserItems) {
+		item := m.browserItems[m.browserCursor].Item
+		path, _ := config.GetInstallPath(item, m.selectedTool, m.selectedScope)
+		sb.WriteString(pathStyle.Render(path))
+	}
+
+	sb.WriteString("\n\n")
+	sb.WriteString(helpStyle.Render("[space] toggle  [enter] actions  [f] filter  [esc] back  [q] quit"))
+
+	return boxStyle.Width(m.width - boxPadding).Render(sb.String())
 }
 
-func (m *Model) writeItemCompatibility(sb *strings.Builder, item *registry.Item) {
-	sb.WriteString("\n")
-	sb.WriteString(categoryStyle.Render("Compatible with:"))
-	sb.WriteString("\n")
+func (m *Model) filterByType(itemType registry.ItemType) []int {
+	var indices []int
 
-	for i, tool := range item.Compatibility {
-		marker := fmt.Sprintf("  [%d] %s", i+1, tool)
-		sb.WriteString(marker)
+	for i, bi := range m.browserItems {
+		if bi.Item.Type == itemType {
+			indices = append(indices, i)
+		}
+	}
+
+	return indices
+}
+
+func (m *Model) renderItems(sb *strings.Builder, indices []int) {
+	for _, idx := range indices {
+		bi := m.browserItems[idx]
+
+		// Selection checkbox
+		checkbox := SymbolUnselected
+		if bi.Selected {
+			checkbox = SymbolSelected
+		}
+
+		// Installed indicator
+		installed := " "
+		if bi.Installed {
+			installed = SymbolInstalled
+		}
+
+		// Cursor
+		cursor := "  "
+		if idx == m.browserCursor {
+			cursor = SymbolCursor + " "
+		}
+
+		// Build line
+		name := bi.Item.Name
+		desc := bi.Item.Description
+
+		// Truncate description
+		maxDescLen := m.width - descPaddingWidth
+		if maxDescLen > 0 && len(desc) > maxDescLen {
+			desc = desc[:maxDescLen-3] + "..."
+		}
+
+		line := fmt.Sprintf("%s%s %s %-20s", cursor, checkbox, installed, name)
+		descPart := dimStyle.Render(desc)
+
+		switch {
+		case idx == m.browserCursor:
+			sb.WriteString(selectedStyle.Render(line))
+		case bi.Installed:
+			sb.WriteString(installedStyle.Render(line))
+		default:
+			sb.WriteString(normalStyle.Render(line))
+		}
+
+		sb.WriteString(" ")
+		sb.WriteString(descPart)
 		sb.WriteString("\n")
 	}
 }
 
-func (m *Model) writeItemTags(sb *strings.Builder, item *registry.Item) {
-	if len(item.Tags) == 0 {
-		return
-	}
+func (m *Model) countSelected() (int, int, int) {
+	var total, installed, newItems int
 
-	sb.WriteString("\nTags: ")
-
-	for _, tag := range item.Tags {
-		sb.WriteString(tagStyle.Render(tag))
-	}
-
-	sb.WriteString("\n")
-}
-
-func (m *Model) writeItemInstallStatus(sb *strings.Builder, item *registry.Item) {
-	sb.WriteString("\n")
-	sb.WriteString(categoryStyle.Render("Install status:"))
-	sb.WriteString("\n")
-
-	scopeLabel := "local"
-	if m.globalScope {
-		scopeLabel = "global"
-	}
-
-	for _, tool := range item.Compatibility {
-		status, err := installer.GetInstallStatus(*item, tool)
-		if err != nil {
+	for _, bi := range m.browserItems {
+		if !bi.Selected {
 			continue
 		}
 
-		installed := status.LocalInstalled
-		if m.globalScope {
-			installed = status.GlobalInstalled
-		}
+		total++
 
-		if installed {
-			sb.WriteString(successStyle.Render(fmt.Sprintf("  %s (%s): installed", tool, scopeLabel)))
+		if bi.Installed {
+			installed++
 		} else {
-			sb.WriteString(helpStyle.Render(fmt.Sprintf("  %s (%s): not installed", tool, scopeLabel)))
+			newItems++
 		}
-
-		sb.WriteString("\n")
 	}
+
+	return total, installed, newItems
 }
 
-// renderList renders the tree list.
-func (m *Model) renderList(width int) string {
-	var sb strings.Builder
+// =============================================================================
+// Action Menu
+// =============================================================================
 
-	visibleHeight := m.height - listPadding
-	start := 0
-	end := len(m.flatList)
-
-	// Scroll if needed
-	if m.cursor >= visibleHeight {
-		start = m.cursor - visibleHeight + 1
+func (m *Model) openActionMenu() {
+	// If nothing selected, select current item
+	selected, _, _ := m.countSelected()
+	if selected == 0 && m.browserCursor < len(m.browserItems) {
+		m.browserItems[m.browserCursor].Selected = true
 	}
 
-	if end > start+visibleHeight {
-		end = start + visibleHeight
+	m.buildMenuOptions()
+	m.menuCursor = 0
+	m.screen = ScreenActionMenu
+}
+
+func (m *Model) buildMenuOptions() {
+	m.menuOptions = nil
+
+	selected, installedCount, newCount := m.countSelected()
+
+	if newCount > 0 {
+		m.menuOptions = append(m.menuOptions, MenuOption{
+			Label:   fmt.Sprintf("Install new (%d)", newCount),
+			Action:  "install_new",
+			Count:   newCount,
+			Enabled: true,
+		})
 	}
 
-	for i := start; i < end; i++ {
-		node := m.flatList[i]
+	if selected > 0 {
+		m.menuOptions = append(m.menuOptions, MenuOption{
+			Label:   fmt.Sprintf("Reinstall all (%d)", selected),
+			Action:  "reinstall",
+			Count:   selected,
+			Enabled: true,
+		})
+	}
 
-		// Indentation
-		indent := strings.Repeat("  ", node.Level)
+	if installedCount > 0 {
+		m.menuOptions = append(m.menuOptions, MenuOption{
+			Label:   fmt.Sprintf("Uninstall (%d)", installedCount),
+			Action:  "uninstall",
+			Count:   installedCount,
+			Enabled: true,
+		})
+	}
 
-		// Icon
-		var icon string
+	// Separator
+	m.menuOptions = append(m.menuOptions, MenuOption{
+		Label:   "─────────────────",
+		Action:  "separator",
+		Enabled: false,
+	})
 
-		if len(node.Children) > 0 {
-			if node.Expanded {
-				icon = "▼ "
-			} else {
-				icon = "▶ "
+	m.menuOptions = append(m.menuOptions, MenuOption{
+		Label:   "Select all",
+		Action:  "select_all",
+		Enabled: true,
+	})
+
+	m.menuOptions = append(m.menuOptions, MenuOption{
+		Label:   "Select none",
+		Action:  "select_none",
+		Enabled: true,
+	})
+}
+
+func (m *Model) updateActionMenu(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch {
+	case key.Matches(msg, keys.Up):
+		m.menuCursor--
+
+		for m.menuCursor >= 0 && !m.menuOptions[m.menuCursor].Enabled {
+			m.menuCursor--
+		}
+
+		if m.menuCursor < 0 {
+			m.menuCursor = 0
+
+			for !m.menuOptions[m.menuCursor].Enabled && m.menuCursor < len(m.menuOptions)-1 {
+				m.menuCursor++
 			}
-		} else {
-			icon = "  "
+		}
+	case key.Matches(msg, keys.Down):
+		m.menuCursor++
+
+		for m.menuCursor < len(m.menuOptions) && !m.menuOptions[m.menuCursor].Enabled {
+			m.menuCursor++
 		}
 
-		// Name with type icon
-		name := node.Name
-		if node.Item != nil {
-			name = TypeIcon(string(node.Item.Type)) + " " + name
+		if m.menuCursor >= len(m.menuOptions) {
+			m.menuCursor = len(m.menuOptions) - 1
+
+			for !m.menuOptions[m.menuCursor].Enabled && m.menuCursor > 0 {
+				m.menuCursor--
+			}
 		}
-
-		line := indent + icon + name
-
-		// Truncate if too long
-		if len(line) > width-borderMargin {
-			line = line[:width-5] + "..."
-		}
-
-		// Style based on selection
-		switch {
-		case i == m.cursor:
-			line = selectedItemStyle.Width(width).Render(line)
-		case node.Item == nil:
-			// Category styling
-			line = categoryStyle.Render(line)
-		default:
-			line = normalItemStyle.Render(line)
-		}
-
-		sb.WriteString(line)
-		sb.WriteString("\n")
+	case key.Matches(msg, keys.Enter):
+		m.executeMenuAction()
+	case key.Matches(msg, keys.Back):
+		m.screen = ScreenBrowser
 	}
 
-	return sb.String()
+	return m, nil
 }
 
-// renderStatusBar renders the status bar.
-func (m *Model) renderStatusBar() string {
-	var left string
-
-	if m.message != "" {
-		left = m.messageStyle.Render(m.message)
-	} else {
-		left = helpStyle.Render("1: opencode | 2: claude | g: toggle scope | ?: help | q: quit")
+func (m *Model) executeMenuAction() {
+	if m.menuCursor >= len(m.menuOptions) {
+		return
 	}
 
-	right := helpStyle.Render(fmt.Sprintf("%d/%d", m.cursor+1, len(m.flatList)))
+	opt := m.menuOptions[m.menuCursor]
 
-	gap := m.width - lipgloss.Width(left) - lipgloss.Width(right) - borderMargin
-	gap = max(gap, statusBarGapMin)
+	switch opt.Action {
+	case "install_new":
+		m.installSelected(false)
+	case "reinstall":
+		m.installSelected(true)
+	case "uninstall":
+		m.uninstallSelected()
+	case "select_all":
+		for i := range m.browserItems {
+			m.browserItems[i].Selected = true
+		}
 
-	return statusBarStyle.Width(m.width).Render(left + strings.Repeat(" ", gap) + right)
+		m.screen = ScreenBrowser
+	case "select_none":
+		for i := range m.browserItems {
+			m.browserItems[i].Selected = false
+		}
+
+		m.screen = ScreenBrowser
+	}
 }
 
-// renderHelp renders the help screen.
-func (m *Model) renderHelp() string {
+func (m *Model) installSelected(force bool) {
+	installed := 0
+	skipped := 0
+
+	for i, bi := range m.browserItems {
+		if !bi.Selected {
+			continue
+		}
+
+		// Skip already installed unless forcing
+		if bi.Installed && !force {
+			skipped++
+
+			continue
+		}
+
+		result, err := installer.Install(bi.Item, m.selectedTool, m.selectedScope, force)
+		if err != nil {
+			m.message = fmt.Sprintf("Error: %v", err)
+			m.messageStyle = errorMsgStyle
+			m.screen = ScreenBrowser
+
+			return
+		}
+
+		if result.Success {
+			installed++
+			m.browserItems[i].Installed = true
+		}
+
+		m.browserItems[i].Selected = false
+	}
+
+	if installed > 0 {
+		m.message = fmt.Sprintf("Installed %d items", installed)
+		m.messageStyle = successMsgStyle
+	} else if skipped > 0 {
+		m.message = fmt.Sprintf("Skipped %d already installed", skipped)
+		m.messageStyle = dimStyle
+	}
+
+	m.screen = ScreenBrowser
+}
+
+func (m *Model) uninstallSelected() {
+	uninstalled := 0
+
+	for i, bi := range m.browserItems {
+		if !bi.Selected || !bi.Installed {
+			continue
+		}
+
+		result, err := installer.Uninstall(bi.Item, m.selectedTool, m.selectedScope)
+		if err != nil {
+			m.message = fmt.Sprintf("Error: %v", err)
+			m.messageStyle = errorMsgStyle
+			m.screen = ScreenBrowser
+
+			return
+		}
+
+		if result.Success {
+			uninstalled++
+			m.browserItems[i].Installed = false
+		}
+
+		m.browserItems[i].Selected = false
+	}
+
+	if uninstalled > 0 {
+		m.message = fmt.Sprintf("Uninstalled %d items", uninstalled)
+		m.messageStyle = successMsgStyle
+	}
+
+	m.screen = ScreenBrowser
+}
+
+func (m *Model) viewActionMenu() string {
 	var sb strings.Builder
 
-	sb.WriteString(titleStyle.Render("Keybindings"))
+	// Header with breadcrumb (same as browser)
+	sb.WriteString(titleStyle.Render("skillsmith"))
+	sb.WriteString(dimStyle.Render(" > "))
+	sb.WriteString(normalStyle.Render(string(m.selectedTool)))
+	sb.WriteString(dimStyle.Render(" > "))
+
+	sb.WriteString(normalStyle.Render(m.getScopeLabel()))
 	sb.WriteString("\n\n")
 
-	bindings := []struct {
-		key  string
-		desc string
-	}{
-		{"↑/k", "Move up"},
-		{"↓/j", "Move down"},
-		{"←/h", "Collapse folder"},
-		{"→/l", "Expand folder"},
-		{"space", "Toggle expand/collapse"},
-		{"1", "Install for OpenCode"},
-		{"2", "Install for Claude"},
-		{"enter", "Install for first compatible tool"},
-		{"g", "Toggle global/local scope"},
-		{"tab", "Switch pane focus"},
-		{"?", "Toggle help"},
-		{"q", "Quit"},
+	// Menu box
+	var menuContent strings.Builder
+
+	selected, _, _ := m.countSelected()
+	menuContent.WriteString(headerStyle.Render(fmt.Sprintf("%d items selected", selected)))
+	menuContent.WriteString("\n\n")
+
+	for i, opt := range m.menuOptions {
+		cursor := "  "
+		if i == m.menuCursor {
+			cursor = SymbolCursor + " "
+		}
+
+		switch {
+		case !opt.Enabled:
+			menuContent.WriteString(dimStyle.Render("  " + opt.Label))
+		case i == m.menuCursor:
+			menuContent.WriteString(selectedStyle.Render(cursor + opt.Label))
+		default:
+			menuContent.WriteString(normalStyle.Render(cursor + opt.Label))
+		}
+
+		menuContent.WriteString("\n")
 	}
 
-	for _, b := range bindings {
-		sb.WriteString(helpKeyStyle.Render(fmt.Sprintf("%8s", b.key)))
-		sb.WriteString("  ")
-		sb.WriteString(helpStyle.Render(b.desc))
-		sb.WriteString("\n")
-	}
+	menuContent.WriteString("\n")
+	menuContent.WriteString(helpStyle.Render("[enter] confirm  [esc] cancel"))
 
-	sb.WriteString("\n")
-	sb.WriteString(helpStyle.Render("Press ? to close help"))
+	sb.WriteString(menuBoxStyle.Render(menuContent.String()))
 
-	return lipgloss.NewStyle().Padding(helpPadding).Render(sb.String())
+	return boxStyle.Width(m.width - boxPadding).Render(sb.String())
 }
