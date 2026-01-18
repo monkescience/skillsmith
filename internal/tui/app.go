@@ -13,7 +13,6 @@ import (
 	"github.com/monke/skillsmith/internal/registry"
 )
 
-// Screen represents the current screen/state.
 type Screen int
 
 const (
@@ -23,7 +22,6 @@ const (
 	ScreenActionMenu
 )
 
-// KeyMap defines the keybindings.
 type KeyMap struct {
 	Up          key.Binding
 	Down        key.Binding
@@ -66,21 +64,18 @@ var keys = KeyMap{
 	),
 }
 
-// BrowserItem represents an item in the browser list.
 type BrowserItem struct {
 	Item     registry.Item
 	Selected bool
 	Status   installer.ItemState
 }
 
-// MenuOption represents an option in the action menu.
 type MenuOption struct {
 	Label   string
 	Action  string
 	Enabled bool
 }
 
-// Model is the main application model.
 type Model struct {
 	registry *registry.Registry
 	screen   Screen
@@ -114,7 +109,6 @@ type Model struct {
 	messageStyle lipgloss.Style
 }
 
-// NewModel creates a new Model.
 func NewModel(reg *registry.Registry) *Model {
 	return &Model{
 		registry: reg,
@@ -124,12 +118,10 @@ func NewModel(reg *registry.Registry) *Model {
 	}
 }
 
-// Init initializes the model.
 func (m *Model) Init() tea.Cmd {
 	return nil
 }
 
-// Update handles messages.
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -160,7 +152,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// View renders the UI.
 func (m *Model) View() string {
 	if !m.ready {
 		return "Loading..."
@@ -251,10 +242,8 @@ func (m *Model) updateToolSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) viewToolSelect() string {
-	// Header
 	header := titleStyle.Render("skillsmith")
 
-	// Content
 	var content strings.Builder
 
 	content.WriteString("Select target tool:\n\n")
@@ -308,10 +297,7 @@ func (m *Model) viewToolSelect() string {
 		content.WriteString("\n")
 	}
 
-	// Footer
 	footer := helpStyle.Render("[enter] select  [q] quit")
-
-	// Add left margin to content
 	paddedContent := lipgloss.NewStyle().
 		MarginLeft(mainLeftPadding).
 		Render(content.String())
@@ -346,14 +332,12 @@ func (m *Model) updateScopeSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) viewScopeSelect() string {
-	// Header with breadcrumb
 	var header strings.Builder
 
 	header.WriteString(titleStyle.Render("skillsmith"))
 	header.WriteString(dimStyle.Render(" > "))
 	header.WriteString(normalStyle.Render(string(m.selectedTool)))
 
-	// Content
 	var content strings.Builder
 
 	content.WriteString("Install location:\n\n")
@@ -392,10 +376,7 @@ func (m *Model) viewScopeSelect() string {
 		content.WriteString("\n")
 	}
 
-	// Footer
 	footer := helpStyle.Render("[enter] select  [esc] back  [q] quit")
-
-	// Add left margin to content
 	paddedContent := lipgloss.NewStyle().
 		MarginLeft(mainLeftPadding).
 		Render(content.String())
@@ -541,7 +522,6 @@ func (m *Model) ensureCursorVisible() {
 }
 
 func (m *Model) viewBrowser() string {
-	// Header with breadcrumb
 	var header strings.Builder
 
 	header.WriteString(titleStyle.Render("skillsmith"))
@@ -550,10 +530,8 @@ func (m *Model) viewBrowser() string {
 	header.WriteString(accentStyle.Render(" > "))
 	header.WriteString(normalStyle.Render(m.getScopeLabel()))
 
-	// Check if we have enough width for split view
 	showPreview := m.width >= minWidthForPreview
 
-	// Content
 	var content string
 	if showPreview {
 		content = m.renderSplitView()
@@ -561,7 +539,6 @@ func (m *Model) viewBrowser() string {
 		content = m.renderListOnly()
 	}
 
-	// Footer with status and help
 	var footer strings.Builder
 
 	selected, installedCount, newCount := m.countSelected()
@@ -608,10 +585,8 @@ func (m *Model) renderSplitView() string {
 	listWidth := (availableWidth * listWidthPercent) / percentDivisor
 	sidebarWidth := availableWidth - listWidth - 1 // -1 for gap between panels
 
-	// Calculate sidebar inner width (minus border and padding)
 	sidebarInnerWidth := sidebarWidth - sidebarBorderWidth - sidebarPaddingTotal
 
-	// Render list panel (no border)
 	var listContent strings.Builder
 
 	visible := m.visibleItemCount()
@@ -625,27 +600,21 @@ func (m *Model) renderSplitView() string {
 		listContent.WriteString(dimStyle.Render(scrollInfo))
 	}
 
-	// Calculate max height for preview (terminal height minus header, footer, borders, padding)
-	// Header: ~2 lines, Footer: ~4 lines, Sidebar border/padding: ~4 lines, margins: ~2 lines
+	// Max height accounts for header (~2), footer (~4), sidebar chrome (~4), margins (~2)
 	previewOverhead := 12
 	maxPreviewHeight := max(m.height-previewOverhead, minVisibleItems)
-
-	// Render preview/sidebar content
 	previewContent := m.renderPreview(sidebarInnerWidth, maxPreviewHeight)
 
-	// Create styled panels - list panel with left margin
 	listPanel := lipgloss.NewStyle().
 		Width(listWidth).
 		MarginLeft(mainLeftPadding).
 		Render(listContent.String())
 
-	// Sidebar with border (OpenCode style)
 	sidebarPanel := sidebarStyle.
-		Width(sidebarWidth - sidebarBorderWidth). // Adjust for border
+		Width(sidebarWidth - sidebarBorderWidth).
 		Height(maxPreviewHeight).
 		Render(previewContent)
 
-	// Join horizontally with small gap
 	return lipgloss.JoinHorizontal(lipgloss.Top, listPanel, " ", sidebarPanel)
 }
 
@@ -682,7 +651,6 @@ func (m *Model) renderVisibleItemsCompact(sb *strings.Builder, visible int, maxW
 func (m *Model) renderPreview(width, maxHeight int) string {
 	var sb strings.Builder
 
-	// Sidebar title
 	sb.WriteString(sidebarTitleStyle.Render("Preview"))
 	sb.WriteString("\n\n")
 
@@ -695,14 +663,12 @@ func (m *Model) renderPreview(width, maxHeight int) string {
 	bi := m.browserItems[m.browserCursor]
 	item := bi.Item
 
-	// Item name and metadata
 	sb.WriteString(previewHeaderStyle.Render(item.Name))
 	sb.WriteString("\n")
 
 	m.renderPreviewMetadata(&sb, bi)
 	m.renderPreviewContent(&sb, item, width)
 
-	// Truncate preview if it exceeds max height
 	content := sb.String()
 	lines := strings.Split(content, "\n")
 
@@ -719,7 +685,6 @@ func (m *Model) renderPreview(width, maxHeight int) string {
 func (m *Model) renderPreviewMetadata(sb *strings.Builder, bi BrowserItem) {
 	bullet := bulletStyle.Render(SymbolBullet) + " "
 
-	// Type
 	sb.WriteString(bullet)
 	sb.WriteString(dimStyle.Render("type: "))
 
@@ -731,14 +696,11 @@ func (m *Model) renderPreviewMetadata(sb *strings.Builder, bi BrowserItem) {
 	}
 
 	sb.WriteString("\n")
-
-	// Status
 	sb.WriteString(bullet)
 	sb.WriteString(dimStyle.Render("status: "))
 	sb.WriteString(getStatusLabel(bi.Status))
 	sb.WriteString("\n")
 
-	// Path
 	path, _ := config.GetInstallPath(bi.Item, m.selectedTool, m.selectedScope)
 
 	sb.WriteString(bullet)
@@ -767,7 +729,6 @@ func getStatusLabel(status installer.ItemState) string {
 func (m *Model) renderPreviewContent(sb *strings.Builder, item registry.Item, width int) {
 	divider := previewDividerStyle.Render(strings.Repeat("-", min(width, previewDividerLen)))
 
-	// Description section
 	if item.Description != "" {
 		sb.WriteString(sectionHeaderStyle.Render("Description"))
 		sb.WriteString("\n")
@@ -779,7 +740,6 @@ func (m *Model) renderPreviewContent(sb *strings.Builder, item registry.Item, wi
 		sb.WriteString("\n\n")
 	}
 
-	// Content section (body)
 	if item.Body != "" {
 		sb.WriteString(sectionHeaderStyle.Render("Content"))
 		sb.WriteString("\n")
@@ -806,7 +766,6 @@ func wrapText(text string, width int) string {
 
 	var result strings.Builder
 
-	// Process each line separately to preserve original line breaks
 	lines := strings.Split(text, "\n")
 
 	for lineIdx, line := range lines {
@@ -814,7 +773,6 @@ func wrapText(text string, width int) string {
 			result.WriteString("\n")
 		}
 
-		// Wrap this single line
 		words := strings.Fields(line)
 		lineLen := 0
 
@@ -841,17 +799,13 @@ func wrapText(text string, width int) string {
 }
 
 func (m *Model) renderVisibleItems(sb *strings.Builder, visible int) {
-	// Determine which items are visible
 	start := m.browserOffset
 	end := min(start+visible, len(m.browserItems))
-
-	// Track section transitions
 	lastType := registry.ItemType("")
 
 	for i := start; i < end; i++ {
 		bi := m.browserItems[i]
 
-		// Render section header on type change
 		if bi.Item.Type != lastType {
 			if lastType != "" {
 				sb.WriteString("\n")
@@ -893,7 +847,6 @@ func getStatusIndicator(status installer.ItemState) (string, lipgloss.Style) {
 func (m *Model) renderItem(sb *strings.Builder, idx int, showDesc bool, maxWidth int) {
 	bi := m.browserItems[idx]
 
-	// Checkbox with color when selected
 	var checkbox string
 	if bi.Selected {
 		checkbox = selectedCheckStyle.Render(SymbolSelected)
@@ -908,15 +861,13 @@ func (m *Model) renderItem(sb *strings.Builder, idx int, showDesc bool, maxWidth
 		cursor = accentStyle.Render(SymbolCursor) + " "
 	}
 
-	// Calculate name width based on available space
 	nameWidth := 20
 	if maxWidth > 0 && maxWidth < 40 {
-		nameWidth = maxWidth - itemPrefixWidth // Leave room for cursor, checkbox, status
+		nameWidth = maxWidth - itemPrefixWidth
 	}
 
 	namePart := fmt.Sprintf(" %-*s", nameWidth, bi.Item.Name)
 
-	// Build the line
 	sb.WriteString(cursor)
 	sb.WriteString(checkbox)
 	sb.WriteString(" ")
@@ -931,7 +882,6 @@ func (m *Model) renderItem(sb *strings.Builder, idx int, showDesc bool, maxWidth
 		sb.WriteString(normalStyle.Render(namePart))
 	}
 
-	// Show description only if requested and there's space
 	if showDesc {
 		desc := bi.Item.Description
 		maxDescLen := maxWidth - nameWidth - itemPrefixWidth - descPaddingExtra
@@ -974,7 +924,6 @@ func (m *Model) countSelected() (int, int, int) {
 // =============================================================================
 
 func (m *Model) openActionMenu() {
-	// If nothing selected, select current item
 	selected, _, _ := m.countSelected()
 	if selected == 0 && m.browserCursor < len(m.browserItems) {
 		m.browserItems[m.browserCursor].Selected = true
@@ -1073,7 +1022,6 @@ func (m *Model) installNew() {
 	installed := 0
 
 	for i, bi := range m.browserItems {
-		// Only install selected items that are not already installed
 		if !bi.Selected || bi.Status.IsInstalled() {
 			continue
 		}
@@ -1108,12 +1056,10 @@ func (m *Model) updateInstalled() {
 	skippedModified := 0
 
 	for i, bi := range m.browserItems {
-		// Only update selected items that are already installed
 		if !bi.Selected || !bi.Status.IsInstalled() {
 			continue
 		}
 
-		// Skip modified files
 		if bi.Status.IsModified() {
 			skippedModified++
 			m.browserItems[i].Selected = false
@@ -1158,12 +1104,10 @@ func (m *Model) updateAllInstalled() {
 	skippedModified := 0
 
 	for i, bi := range m.browserItems {
-		// Update all installed items (regardless of selection)
 		if !bi.Status.IsInstalled() {
 			continue
 		}
 
-		// Skip modified files
 		if bi.Status.IsModified() {
 			skippedModified++
 
@@ -1236,7 +1180,6 @@ func (m *Model) uninstallSelected() {
 }
 
 func (m *Model) viewActionMenu() string {
-	// Header with breadcrumb
 	var header strings.Builder
 
 	header.WriteString(titleStyle.Render("skillsmith"))
@@ -1245,7 +1188,6 @@ func (m *Model) viewActionMenu() string {
 	header.WriteString(dimStyle.Render(" > "))
 	header.WriteString(normalStyle.Render(m.getScopeLabel()))
 
-	// Content - menu box
 	var menuContent strings.Builder
 
 	selected, _, _ := m.countSelected()
@@ -1271,13 +1213,9 @@ func (m *Model) viewActionMenu() string {
 	}
 
 	menuBox := menuBoxStyle.Render(menuContent.String())
-
-	// Add left margin to content
 	content := lipgloss.NewStyle().
 		MarginLeft(mainLeftPadding).
 		Render(menuBox)
-
-	// Footer
 	footer := helpStyle.Render("[enter] confirm  [esc] cancel")
 
 	return m.renderLayout(header.String(), content, footer)
