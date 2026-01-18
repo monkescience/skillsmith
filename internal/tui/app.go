@@ -76,9 +76,9 @@ var keys = KeyMap{
 
 // BrowserItem represents an item in the browser list.
 type BrowserItem struct {
-	Item      registry.Item
-	Selected  bool
-	Installed bool
+	Item     registry.Item
+	Selected bool
+	Status   installer.ItemState
 }
 
 // MenuOption represents an option in the action menu.
@@ -284,21 +284,30 @@ func (m *Model) viewToolSelect() string {
 		}
 
 		// Count installed items per scope
-		localInstalled := m.countInstalledForTool(tool, config.ScopeLocal)
-		globalInstalled := m.countInstalledForTool(tool, config.ScopeGlobal)
+		localInstalled, localUpdates := m.countInstalledForTool(tool, config.ScopeLocal)
+		globalInstalled, globalUpdates := m.countInstalledForTool(tool, config.ScopeGlobal)
+		totalUpdates := localUpdates + globalUpdates
 
 		line := fmt.Sprintf("%s%s", cursor, tool)
 		stats := dimStyle.Render(fmt.Sprintf("  %d agents, %d skills", agents, skills))
-		installed := dimStyle.Render(fmt.Sprintf("  (%d local, %d global)", localInstalled, globalInstalled))
+
+		var installedInfo string
+		if totalUpdates > 0 {
+			installedInfo = fmt.Sprintf("  (%d local, %d global, ", localInstalled, globalInstalled)
+			installedInfo += updateStyle.Render(fmt.Sprintf("%d updates", totalUpdates))
+			installedInfo += dimStyle.Render(")")
+		} else {
+			installedInfo = dimStyle.Render(fmt.Sprintf("  (%d local, %d global)", localInstalled, globalInstalled))
+		}
 
 		if i == m.toolCursor {
 			content.WriteString(selectedStyle.Render(line))
 			content.WriteString(stats)
-			content.WriteString(installed)
+			content.WriteString(installedInfo)
 		} else {
 			content.WriteString(normalStyle.Render(line))
 			content.WriteString(stats)
-			content.WriteString(installed)
+			content.WriteString(installedInfo)
 		}
 
 		content.WriteString("\n")
@@ -408,21 +417,28 @@ func (m *Model) getGlobalPath() string {
 }
 
 func (m *Model) countInstalled(scope config.Scope) int {
-	return m.countInstalledForTool(m.selectedTool, scope)
+	installed, _ := m.countInstalledForTool(m.selectedTool, scope)
+
+	return installed
 }
 
-func (m *Model) countInstalledForTool(tool registry.Tool, scope config.Scope) int {
-	count := 0
+func (m *Model) countInstalledForTool(tool registry.Tool, scope config.Scope) (int, int) {
+	var installed, updates int
+
 	items := m.registry.ByTool(tool)
 
 	for _, item := range items {
-		installed, _, _ := installer.IsInstalled(item, tool, scope)
-		if installed {
-			count++
+		state, _, _ := installer.GetItemState(item, tool, scope)
+		if state.IsInstalled() {
+			installed++
+		}
+
+		if state.HasUpdate() {
+			updates++
 		}
 	}
 
-	return count
+	return installed, updates
 }
 
 func (m *Model) getScopeLabel() string {
@@ -444,11 +460,11 @@ func (m *Model) loadBrowserItems() {
 	items := m.registry.ByTool(m.selectedTool)
 
 	for _, item := range items {
-		installed, _, _ := installer.IsInstalled(item, m.selectedTool, m.selectedScope)
+		state, _, _ := installer.GetItemState(item, m.selectedTool, m.selectedScope)
 		m.browserItems = append(m.browserItems, BrowserItem{
-			Item:      item,
-			Selected:  false,
-			Installed: installed,
+			Item:     item,
+			Selected: false,
+			Status:   state,
 		})
 	}
 }
@@ -611,47 +627,62 @@ func (m *Model) renderVisibleItems(sb *strings.Builder, visible int) {
 	}
 }
 
+func getStatusIndicator(status installer.ItemState) (string, lipgloss.Style) {
+	switch status {
+	case installer.StateNotInstalled:
+		return " ", normalStyle
+	case installer.StateUpToDate:
+		return SymbolInstalled, installedStyle
+	case installer.StateUpdateAvailable:
+		return SymbolUpdate, updateStyle
+	case installer.StateModified:
+		return SymbolModified, modifiedStyle
+	case installer.StateModifiedWithUpdate:
+		return SymbolUpdate + SymbolModified, updateStyle
+	default:
+		return " ", normalStyle
+	}
+}
+
 func (m *Model) renderItem(sb *strings.Builder, idx int) {
 	bi := m.browserItems[idx]
 
-	// Selection checkbox
 	checkbox := SymbolUnselected
 	if bi.Selected {
 		checkbox = SymbolSelected
 	}
 
-	// Installed indicator
-	installed := " "
-	if bi.Installed {
-		installed = SymbolInstalled
-	}
+	statusSymbol, statusStyle := getStatusIndicator(bi.Status)
 
-	// Cursor
 	cursor := "  "
 	if idx == m.browserCursor {
 		cursor = SymbolCursor + " "
 	}
 
-	// Build line
-	name := bi.Item.Name
 	desc := bi.Item.Description
-
-	// Truncate description
 	maxDescLen := m.width - descPaddingWidth
+
 	if maxDescLen > 0 && len(desc) > maxDescLen {
 		desc = desc[:maxDescLen-3] + "..."
 	}
 
-	line := fmt.Sprintf("%s%s %s %-20s", cursor, checkbox, installed, name)
+	line := fmt.Sprintf("%s%s ", cursor, checkbox)
+	namePart := fmt.Sprintf(" %-20s", bi.Item.Name)
 	descPart := dimStyle.Render(desc)
 
 	switch {
 	case idx == m.browserCursor:
 		sb.WriteString(selectedStyle.Render(line))
-	case bi.Installed:
-		sb.WriteString(installedStyle.Render(line))
+		sb.WriteString(statusStyle.Render(statusSymbol))
+		sb.WriteString(selectedStyle.Render(namePart))
+	case bi.Status.IsInstalled():
+		sb.WriteString(normalStyle.Render(line))
+		sb.WriteString(statusStyle.Render(statusSymbol))
+		sb.WriteString(statusStyle.Render(namePart))
 	default:
 		sb.WriteString(normalStyle.Render(line))
+		sb.WriteString(statusSymbol)
+		sb.WriteString(normalStyle.Render(namePart))
 	}
 
 	sb.WriteString(" ")
@@ -669,7 +700,7 @@ func (m *Model) countSelected() (int, int, int) {
 
 		total++
 
-		if bi.Installed {
+		if bi.Status.IsInstalled() {
 			installed++
 		} else {
 			newItems++
@@ -787,7 +818,7 @@ func (m *Model) installNew() {
 
 	for i, bi := range m.browserItems {
 		// Only install selected items that are not already installed
-		if !bi.Selected || bi.Installed {
+		if !bi.Selected || bi.Status.IsInstalled() {
 			continue
 		}
 
@@ -802,7 +833,7 @@ func (m *Model) installNew() {
 
 		if result.Success {
 			installed++
-			m.browserItems[i].Installed = true
+			m.browserItems[i].Status = installer.StateUpToDate
 		}
 
 		m.browserItems[i].Selected = false
@@ -818,10 +849,19 @@ func (m *Model) installNew() {
 
 func (m *Model) updateInstalled() {
 	updated := 0
+	skippedModified := 0
 
 	for i, bi := range m.browserItems {
 		// Only update selected items that are already installed
-		if !bi.Selected || !bi.Installed {
+		if !bi.Selected || !bi.Status.IsInstalled() {
+			continue
+		}
+
+		// Skip modified files
+		if bi.Status.IsModified() {
+			skippedModified++
+			m.browserItems[i].Selected = false
+
 			continue
 		}
 
@@ -836,14 +876,22 @@ func (m *Model) updateInstalled() {
 
 		if result.Success {
 			updated++
+			m.browserItems[i].Status = installer.StateUpToDate
 		}
 
 		m.browserItems[i].Selected = false
 	}
 
-	if updated > 0 {
+	switch {
+	case updated > 0 && skippedModified > 0:
+		m.message = fmt.Sprintf("Updated %d items, skipped %d modified", updated, skippedModified)
+		m.messageStyle = successMsgStyle
+	case updated > 0:
 		m.message = fmt.Sprintf("Updated %d items", updated)
 		m.messageStyle = successMsgStyle
+	case skippedModified > 0:
+		m.message = fmt.Sprintf("Skipped %d modified items", skippedModified)
+		m.messageStyle = modifiedStyle
 	}
 
 	m.screen = ScreenBrowser
@@ -851,10 +899,18 @@ func (m *Model) updateInstalled() {
 
 func (m *Model) updateAllInstalled() {
 	updated := 0
+	skippedModified := 0
 
 	for i, bi := range m.browserItems {
 		// Update all installed items (regardless of selection)
-		if !bi.Installed {
+		if !bi.Status.IsInstalled() {
+			continue
+		}
+
+		// Skip modified files
+		if bi.Status.IsModified() {
+			skippedModified++
+
 			continue
 		}
 
@@ -868,15 +924,23 @@ func (m *Model) updateAllInstalled() {
 
 		if result.Success {
 			updated++
+			m.browserItems[i].Status = installer.StateUpToDate
 		}
 
 		m.browserItems[i].Selected = false
 	}
 
-	if updated > 0 {
+	switch {
+	case updated > 0 && skippedModified > 0:
+		m.message = fmt.Sprintf("Updated %d items, skipped %d modified", updated, skippedModified)
+		m.messageStyle = successMsgStyle
+	case updated > 0:
 		m.message = fmt.Sprintf("Updated %d items", updated)
 		m.messageStyle = successMsgStyle
-	} else {
+	case skippedModified > 0:
+		m.message = fmt.Sprintf("Skipped %d modified items", skippedModified)
+		m.messageStyle = modifiedStyle
+	default:
 		m.message = "No installed items to update"
 		m.messageStyle = dimStyle
 	}
@@ -886,7 +950,7 @@ func (m *Model) uninstallSelected() {
 	uninstalled := 0
 
 	for i, bi := range m.browserItems {
-		if !bi.Selected || !bi.Installed {
+		if !bi.Selected || !bi.Status.IsInstalled() {
 			continue
 		}
 
@@ -901,7 +965,7 @@ func (m *Model) uninstallSelected() {
 
 		if result.Success {
 			uninstalled++
-			m.browserItems[i].Installed = false
+			m.browserItems[i].Status = installer.StateNotInstalled
 		}
 
 		m.browserItems[i].Selected = false

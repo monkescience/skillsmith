@@ -3,6 +3,7 @@ package installer
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/monke/skillsmith/internal/config"
 	"github.com/monke/skillsmith/internal/registry"
@@ -63,6 +64,22 @@ func Install(item registry.Item, tool registry.Tool, scope config.Scope, force b
 		return nil, fmt.Errorf("failed to write file: %w", err)
 	}
 
+	// Save hash to metadata
+	meta, err := LoadMetadata(tool, scope)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load metadata: %w", err)
+	}
+
+	meta.Set(item.Name, InstalledItem{
+		Hash:        ComputeHash(content),
+		InstalledAt: time.Now(),
+	})
+
+	err = SaveMetadata(tool, scope, meta)
+	if err != nil {
+		return nil, fmt.Errorf("failed to save metadata: %w", err)
+	}
+
 	return &Result{
 		Success: true,
 		Path:    path,
@@ -92,6 +109,13 @@ func Uninstall(item registry.Item, tool registry.Tool, scope config.Scope) (*Res
 		return nil, fmt.Errorf("failed to remove file: %w", err)
 	}
 
+	// Remove from metadata (best effort, file is already removed)
+	meta, _ := LoadMetadata(tool, scope)
+	if meta != nil {
+		meta.Remove(item.Name)
+		_ = SaveMetadata(tool, scope, meta)
+	}
+
 	return &Result{
 		Success: true,
 		Path:    path,
@@ -100,40 +124,106 @@ func Uninstall(item registry.Item, tool registry.Tool, scope config.Scope) (*Res
 	}, nil
 }
 
-// IsInstalled checks if an item is already installed for a specific tool at the given scope.
-func IsInstalled(item registry.Item, tool registry.Tool, scope config.Scope) (bool, string, error) {
+// GetItemState determines the installation state of an item.
+func GetItemState(item registry.Item, tool registry.Tool, scope config.Scope) (ItemState, string, error) {
 	path, err := config.GetInstallPath(item, tool, scope)
 	if err != nil {
-		return false, "", fmt.Errorf("get install path: %w", err)
+		return StateNotInstalled, "", fmt.Errorf("get install path: %w", err)
 	}
 
-	return config.Exists(path), path, nil
+	// Check if file exists
+	if !config.Exists(path) {
+		return StateNotInstalled, path, nil
+	}
+
+	// Load metadata
+	meta, metaErr := LoadMetadata(tool, scope)
+	if metaErr != nil {
+		// If metadata can't be loaded, assume file exists but state unknown
+		// Treat as modified since we don't know the original hash
+		return StateModified, path, nil //nolint:nilerr // intentional: treat as modified
+	}
+
+	// Get the stored hash for this item
+	installedInfo, hasMetadata := meta.Get(item.Name)
+
+	// Compute current file hash
+	fileHash, hashErr := ComputeFileHash(path)
+	if hashErr != nil {
+		return StateModified, path, nil //nolint:nilerr // intentional: treat as modified
+	}
+
+	// Compute what the registry version would look like
+	registryContent, transformErr := transformer.Transform(item, tool)
+	if transformErr != nil {
+		return StateModified, path, nil //nolint:nilerr // intentional: treat as modified
+	}
+
+	registryHash := ComputeHash(registryContent)
+
+	// If no metadata, we don't know the original installed version
+	// Compare file to registry to make best guess
+	if !hasMetadata {
+		if fileHash == registryHash {
+			return StateUpToDate, path, nil
+		}
+		// File exists but doesn't match registry and no metadata
+		// Could be modified or could be old version - treat as modified to be safe
+		return StateModified, path, nil
+	}
+
+	// We have metadata - compare all three hashes
+	installedHash := installedInfo.Hash
+	fileMatchesInstalled := fileHash == installedHash
+	registryMatchesInstalled := registryHash == installedHash
+
+	switch {
+	case fileMatchesInstalled && registryMatchesInstalled:
+		// All three match - up to date
+		return StateUpToDate, path, nil
+	case fileMatchesInstalled && !registryMatchesInstalled:
+		// File unchanged, but registry has new version
+		return StateUpdateAvailable, path, nil
+	case !fileMatchesInstalled && registryMatchesInstalled:
+		// File was modified, registry unchanged
+		return StateModified, path, nil
+	default:
+		// File modified AND registry has new version
+		return StateModifiedWithUpdate, path, nil
+	}
 }
 
-// InstallStatus represents installation status for both scopes.
-type InstallStatus struct {
-	LocalInstalled  bool
-	LocalPath       string
-	GlobalInstalled bool
-	GlobalPath      string
+// IsInstalled checks if an item is already installed for a specific tool at the given scope.
+//
+// Deprecated: Use GetItemState for more detailed status.
+func IsInstalled(item registry.Item, tool registry.Tool, scope config.Scope) (ItemState, string, error) {
+	return GetItemState(item, tool, scope)
 }
 
-// GetInstallStatus returns installation status for both scopes for a specific tool.
-func GetInstallStatus(item registry.Item, tool registry.Tool) (*InstallStatus, error) {
-	localInstalled, localPath, err := IsInstalled(item, tool, config.ScopeLocal)
+// ScopeStatus represents installation status for both scopes.
+type ScopeStatus struct {
+	LocalState  ItemState
+	LocalPath   string
+	GlobalState ItemState
+	GlobalPath  string
+}
+
+// GetScopeStatus returns installation status for both scopes for a specific tool.
+func GetScopeStatus(item registry.Item, tool registry.Tool) (*ScopeStatus, error) {
+	localState, localPath, err := GetItemState(item, tool, config.ScopeLocal)
 	if err != nil {
 		return nil, err
 	}
 
-	globalInstalled, globalPath, err := IsInstalled(item, tool, config.ScopeGlobal)
+	globalState, globalPath, err := GetItemState(item, tool, config.ScopeGlobal)
 	if err != nil {
 		return nil, err
 	}
 
-	return &InstallStatus{
-		LocalInstalled:  localInstalled,
-		LocalPath:       localPath,
-		GlobalInstalled: globalInstalled,
-		GlobalPath:      globalPath,
+	return &ScopeStatus{
+		LocalState:  localState,
+		LocalPath:   localPath,
+		GlobalState: globalState,
+		GlobalPath:  globalPath,
 	}, nil
 }

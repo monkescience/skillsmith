@@ -11,3 +11,7 @@ coverage.html
 
 # OS
 .DS_Store
+
+# Local tool config (test installations)
+.claude/
+.opencode/

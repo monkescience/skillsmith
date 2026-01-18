@@ -16,13 +16,15 @@ const (
 	LabelGlobal = "Global"
 )
 
-// Monochrome color palette.
+// Color palette.
 var (
 	white     = lipgloss.Color("#FFFFFF")
 	lightGray = lipgloss.Color("#AAAAAA")
 	gray      = lipgloss.Color("#666666")
 	black     = lipgloss.Color("#000000")
-	green     = lipgloss.Color("#00AA00") // For success/installed indicators
+	green     = lipgloss.Color("#00AA00") // For success/up-to-date indicators
+	yellow    = lipgloss.Color("#AAAA00") // For update available
+	cyan      = lipgloss.Color("#00AAAA") // For modified locally
 	red       = lipgloss.Color("#AA0000") // For errors
 )
 
@@ -51,6 +53,12 @@ var (
 	// Status indicators.
 	installedStyle = lipgloss.NewStyle().
 			Foreground(green)
+
+	updateStyle = lipgloss.NewStyle().
+			Foreground(yellow)
+
+	modifiedStyle = lipgloss.NewStyle().
+			Foreground(cyan)
 
 	errorMsgStyle = lipgloss.NewStyle().
 			Foreground(red)
@@ -83,6 +91,8 @@ const (
 	SymbolSelected   = "[x]"
 	SymbolUnselected = "[ ]"
 	SymbolInstalled  = "✓"
+	SymbolUpdate     = "↑"
+	SymbolModified   = "*"
 	SymbolCursor     = ">"
 	SymbolAgent      = "◆"
 	SymbolSkill      = "○"
