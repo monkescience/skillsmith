@@ -942,7 +942,7 @@ func (m *Model) buildMenuOptions() {
 	if newCount > 0 {
 		m.menuOptions = append(m.menuOptions, MenuOption{
 			Label:   fmt.Sprintf("Install (%d new)", newCount),
-			Action:  "install",
+			Action:  ActionInstall,
 			Enabled: true,
 		})
 	}
@@ -950,13 +950,13 @@ func (m *Model) buildMenuOptions() {
 	if installedCount > 0 {
 		m.menuOptions = append(m.menuOptions, MenuOption{
 			Label:   fmt.Sprintf("Update (%d installed)", installedCount),
-			Action:  "update",
+			Action:  ActionUpdate,
 			Enabled: true,
 		})
 
 		m.menuOptions = append(m.menuOptions, MenuOption{
 			Label:   fmt.Sprintf("Uninstall (%d)", installedCount),
-			Action:  "uninstall",
+			Action:  ActionUninstall,
 			Enabled: true,
 		})
 	}
@@ -1009,11 +1009,11 @@ func (m *Model) executeMenuAction() {
 	opt := m.menuOptions[m.menuCursor]
 
 	switch opt.Action {
-	case "install":
+	case ActionInstall:
 		m.installNew()
-	case "update":
+	case ActionUpdate:
 		m.updateInstalled()
-	case "uninstall":
+	case ActionUninstall:
 		m.uninstallSelected()
 	}
 }
@@ -1179,15 +1179,126 @@ func (m *Model) uninstallSelected() {
 	m.screen = ScreenBrowser
 }
 
+// getItemsForAction returns the selected items that will be affected by the given action.
+func (m *Model) getItemsForAction(action string) []BrowserItem {
+	var items []BrowserItem
+
+	for _, bi := range m.browserItems {
+		if !bi.Selected {
+			continue
+		}
+
+		switch action {
+		case ActionInstall:
+			if !bi.Status.IsInstalled() {
+				items = append(items, bi)
+			}
+		case ActionUpdate, ActionUninstall:
+			if bi.Status.IsInstalled() {
+				items = append(items, bi)
+			}
+		}
+	}
+
+	return items
+}
+
+// renderActionPreview renders the right sidebar showing items affected by the current action.
+func (m *Model) renderActionPreview(_, maxHeight int) string {
+	var sb strings.Builder
+
+	// Determine title based on current menu option
+	title := "Affected Items"
+	action := ""
+
+	if m.menuCursor < len(m.menuOptions) {
+		action = m.menuOptions[m.menuCursor].Action
+
+		switch action {
+		case ActionInstall:
+			title = "Will Install"
+		case ActionUpdate:
+			title = "Will Update"
+		case ActionUninstall:
+			title = "Will Uninstall"
+		}
+	}
+
+	sb.WriteString(sidebarTitleStyle.Render(title))
+	sb.WriteString("\n\n")
+
+	items := m.getItemsForAction(action)
+
+	if len(items) == 0 {
+		sb.WriteString(dimStyle.Render("No items"))
+
+		return sb.String()
+	}
+
+	bullet := bulletStyle.Render(SymbolBullet) + " "
+
+	for _, bi := range items {
+		sb.WriteString(bullet)
+
+		// Name
+		sb.WriteString(normalStyle.Render(bi.Item.Name))
+
+		// Type and status in parentheses
+		typeStr := string(bi.Item.Type)
+		statusStr := getStatusShortLabel(bi.Status)
+
+		sb.WriteString(dimStyle.Render(fmt.Sprintf(" (%s, %s)", typeStr, statusStr)))
+		sb.WriteString("\n")
+	}
+
+	content := sb.String()
+	lines := strings.Split(content, "\n")
+
+	if len(lines) > maxHeight {
+		lines = lines[:maxHeight-1]
+		lines = append(lines, dimStyle.Render("..."))
+
+		return strings.Join(lines, "\n")
+	}
+
+	return content
+}
+
+// getStatusShortLabel returns a short status label for display in the action preview.
+func getStatusShortLabel(status installer.ItemState) string {
+	switch status {
+	case installer.StateNotInstalled:
+		return "new"
+	case installer.StateUpToDate:
+		return "installed"
+	case installer.StateUpdateAvailable:
+		return "update available"
+	case installer.StateModified:
+		return "modified"
+	case installer.StateModifiedWithUpdate:
+		return "modified + update"
+	default:
+		return "unknown"
+	}
+}
+
 func (m *Model) viewActionMenu() string {
 	var header strings.Builder
 
 	header.WriteString(titleStyle.Render("skillsmith"))
-	header.WriteString(dimStyle.Render(" > "))
+	header.WriteString(accentStyle.Render(" > "))
 	header.WriteString(normalStyle.Render(string(m.selectedTool)))
-	header.WriteString(dimStyle.Render(" > "))
+	header.WriteString(accentStyle.Render(" > "))
 	header.WriteString(normalStyle.Render(m.getScopeLabel()))
 
+	// Calculate widths similar to browser split view
+	availableWidth := m.width - mainLeftPaddingTotal
+	listWidth := (availableWidth * listWidthPercent) / percentDivisor
+	sidebarWidth := availableWidth - listWidth - 1
+
+	sidebarInnerWidth := sidebarWidth - sidebarBorderWidth - sidebarPaddingTotal
+
+	// Build menu content (left panel)
 	var menuContent strings.Builder
 
 	selected, _, _ := m.countSelected()
@@ -1212,10 +1323,25 @@ func (m *Model) viewActionMenu() string {
 		menuContent.WriteString("\n")
 	}
 
-	menuBox := menuBoxStyle.Render(menuContent.String())
-	content := lipgloss.NewStyle().
+	// Max height for sidebar
+	previewOverhead := 12
+	maxPreviewHeight := max(m.height-previewOverhead, minVisibleItems)
+
+	// Build preview content (right panel)
+	previewContent := m.renderActionPreview(sidebarInnerWidth, maxPreviewHeight)
+
+	// Assemble split view
+	listPanel := lipgloss.NewStyle().
+		Width(listWidth).
 		MarginLeft(mainLeftPadding).
-		Render(menuBox)
+		Render(menuContent.String())
+
+	sidebarPanel := sidebarStyle.
+		Width(sidebarWidth - sidebarBorderWidth).
+		Height(maxPreviewHeight).
+		Render(previewContent)
+
+	content := lipgloss.JoinHorizontal(lipgloss.Top, listPanel, " ", sidebarPanel)
 	footer := helpStyle.Render("[enter] confirm  [esc] cancel")
 
 	return m.renderLayout(header.String(), content, footer)

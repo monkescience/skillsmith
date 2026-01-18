@@ -23,6 +23,12 @@ const (
 	LabelGlobal = "Global"
 )
 
+const (
+	ActionInstall   = "install"
+	ActionUpdate    = "update"
+	ActionUninstall = "uninstall"
+)
+
 var (
 	white     = lipgloss.Color("#FFFFFF")
 	lightGray = lipgloss.Color("#AAAAAA")
@@ -75,11 +81,6 @@ var (
 
 	selectedCheckStyle = lipgloss.NewStyle().
 				Foreground(green)
-
-	menuBoxStyle = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(blue).
-			Padding(1, sidebarPadding)
 
 	sidebarStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
