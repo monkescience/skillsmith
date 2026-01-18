@@ -530,27 +530,20 @@ func (m *Model) viewBrowser() string {
 	var header strings.Builder
 
 	header.WriteString(titleStyle.Render("skillsmith"))
-	header.WriteString(dimStyle.Render(" > "))
+	header.WriteString(accentStyle.Render(" > "))
 	header.WriteString(normalStyle.Render(string(m.selectedTool)))
-	header.WriteString(dimStyle.Render(" > "))
+	header.WriteString(accentStyle.Render(" > "))
 	header.WriteString(normalStyle.Render(m.getScopeLabel()))
 
+	// Check if we have enough width for split view
+	showPreview := m.width >= minWidthForPreview
+
 	// Content
-	var content strings.Builder
-
-	// Calculate visible range
-	visible := m.visibleItemCount()
-	totalItems := len(m.browserItems)
-
-	// Render visible items with scroll indicator
-	m.renderVisibleItems(&content, visible)
-
-	// Scroll indicator
-	if totalItems > visible {
-		end := min(m.browserOffset+visible, totalItems)
-		scrollInfo := fmt.Sprintf("[%d-%d of %d]", m.browserOffset+1, end, totalItems)
-		content.WriteString(dimStyle.Render(scrollInfo))
-		content.WriteString("\n")
+	var content string
+	if showPreview {
+		content = m.renderSplitView()
+	} else {
+		content = m.renderListOnly()
 	}
 
 	// Footer with status and help
@@ -579,7 +572,180 @@ func (m *Model) viewBrowser() string {
 	helpText := "[space] toggle  [a/d] all/none  [u] update  [enter] actions  [esc] back  [q] quit"
 	footer.WriteString(helpStyle.Render(helpText))
 
-	return m.renderLayout(header.String(), content.String(), footer.String())
+	return m.renderLayout(header.String(), content, footer.String())
+}
+
+func (m *Model) renderListOnly() string {
+	var content strings.Builder
+
+	visible := m.visibleItemCount()
+	totalItems := len(m.browserItems)
+
+	m.renderVisibleItems(&content, visible)
+
+	if totalItems > visible {
+		end := min(m.browserOffset+visible, totalItems)
+		scrollInfo := fmt.Sprintf("[%d-%d of %d]", m.browserOffset+1, end, totalItems)
+		content.WriteString(dimStyle.Render(scrollInfo))
+		content.WriteString("\n")
+	}
+
+	return content.String()
+}
+
+func (m *Model) renderSplitView() string {
+	// Calculate widths
+	innerWidth := m.width - boxPadding - boxBorderWidth
+	listWidth := (innerWidth * listWidthPercent) / percentDivisor
+	previewWidth := innerWidth - listWidth - dividerSpacing
+
+	// Render list panel
+	var listContent strings.Builder
+
+	visible := m.visibleItemCount()
+	totalItems := len(m.browserItems)
+
+	m.renderVisibleItemsCompact(&listContent, visible, listWidth)
+
+	if totalItems > visible {
+		end := min(m.browserOffset+visible, totalItems)
+		scrollInfo := fmt.Sprintf("[%d-%d of %d]", m.browserOffset+1, end, totalItems)
+		listContent.WriteString(dimStyle.Render(scrollInfo))
+	}
+
+	// Render preview panel
+	previewContent := m.renderPreview(previewWidth)
+
+	// Create styled panels
+	listPanel := lipgloss.NewStyle().
+		Width(listWidth).
+		Render(listContent.String())
+
+	divider := previewDividerStyle.Render("│")
+
+	previewPanel := lipgloss.NewStyle().
+		Width(previewWidth).
+		PaddingLeft(1).
+		Render(previewContent)
+
+	// Join horizontally
+	return lipgloss.JoinHorizontal(lipgloss.Top, listPanel, divider, previewPanel)
+}
+
+func (m *Model) renderVisibleItemsCompact(sb *strings.Builder, visible int, maxWidth int) {
+	start := m.browserOffset
+	end := min(start+visible, len(m.browserItems))
+
+	lastType := registry.ItemType("")
+
+	for i := start; i < end; i++ {
+		bi := m.browserItems[i]
+
+		if bi.Item.Type != lastType {
+			if lastType != "" {
+				sb.WriteString("\n")
+			}
+
+			switch bi.Item.Type {
+			case registry.ItemTypeAgent:
+				sb.WriteString(headerStyle.Render("Agents:"))
+			case registry.ItemTypeSkill:
+				sb.WriteString(headerStyle.Render("Skills:"))
+			}
+
+			sb.WriteString("\n")
+
+			lastType = bi.Item.Type
+		}
+
+		m.renderItem(sb, i, false, maxWidth) // No description in split view
+	}
+}
+
+func (m *Model) renderPreview(width int) string {
+	if m.browserCursor >= len(m.browserItems) {
+		return dimStyle.Render("No item selected")
+	}
+
+	item := m.browserItems[m.browserCursor].Item
+
+	var sb strings.Builder
+
+	// Header: name and type badge
+	sb.WriteString(previewHeaderStyle.Render(item.Name))
+	sb.WriteString(" ")
+
+	switch item.Type {
+	case registry.ItemTypeAgent:
+		sb.WriteString(badgeAgentStyle.Render("agent"))
+	case registry.ItemTypeSkill:
+		sb.WriteString(badgeSkillStyle.Render("skill"))
+	}
+
+	sb.WriteString("\n")
+
+	// Divider line
+	dividerLen := min(width-previewPadding, previewDividerLen)
+	if dividerLen > 0 {
+		sb.WriteString(previewDividerStyle.Render(strings.Repeat("─", dividerLen)))
+		sb.WriteString("\n\n")
+	}
+
+	// Description
+	if item.Description != "" {
+		desc := wrapText(item.Description, width-previewPadding)
+		sb.WriteString(normalStyle.Render(desc))
+		sb.WriteString("\n\n")
+	}
+
+	// Body content (truncated)
+	if item.Body != "" {
+		body := wrapText(item.Body, width-previewPadding)
+		// Limit to reasonable number of lines
+		lines := strings.Split(body, "\n")
+		maxLines := previewMaxLines
+
+		if len(lines) > maxLines {
+			lines = lines[:maxLines]
+			lines = append(lines, dimStyle.Render("..."))
+		}
+
+		sb.WriteString(previewBodyStyle.Render(strings.Join(lines, "\n")))
+	}
+
+	return sb.String()
+}
+
+// wrapText wraps text to the specified width.
+func wrapText(text string, width int) string {
+	if width <= 0 {
+		return text
+	}
+
+	var result strings.Builder
+
+	words := strings.Fields(text)
+	lineLen := 0
+
+	for i, word := range words {
+		wordLen := len(word)
+
+		if lineLen+wordLen+1 > width && lineLen > 0 {
+			result.WriteString("\n")
+
+			lineLen = 0
+		} else if i > 0 && lineLen > 0 {
+			result.WriteString(" ")
+
+			lineLen++
+		}
+
+		result.WriteString(word)
+
+		lineLen += wordLen
+	}
+
+	return result.String()
 }
 
 func (m *Model) renderVisibleItems(sb *strings.Builder, visible int) {
@@ -611,7 +777,7 @@ func (m *Model) renderVisibleItems(sb *strings.Builder, visible int) {
 			lastType = bi.Item.Type
 		}
 
-		m.renderItem(sb, i)
+		m.renderItem(sb, i, true, m.width)
 	}
 }
 
@@ -632,49 +798,62 @@ func getStatusIndicator(status installer.ItemState) (string, lipgloss.Style) {
 	}
 }
 
-func (m *Model) renderItem(sb *strings.Builder, idx int) {
+func (m *Model) renderItem(sb *strings.Builder, idx int, showDesc bool, maxWidth int) {
 	bi := m.browserItems[idx]
 
-	checkbox := SymbolUnselected
+	// Checkbox with color when selected
+	var checkbox string
 	if bi.Selected {
-		checkbox = SymbolSelected
+		checkbox = selectedCheckStyle.Render(SymbolSelected)
+	} else {
+		checkbox = dimStyle.Render(SymbolUnselected)
 	}
 
 	statusSymbol, statusStyle := getStatusIndicator(bi.Status)
 
 	cursor := "  "
 	if idx == m.browserCursor {
-		cursor = SymbolCursor + " "
+		cursor = accentStyle.Render(SymbolCursor) + " "
 	}
 
-	desc := bi.Item.Description
-	maxDescLen := m.width - descPaddingWidth
-
-	if maxDescLen > 0 && len(desc) > maxDescLen {
-		desc = desc[:maxDescLen-3] + "..."
+	// Calculate name width based on available space
+	nameWidth := 20
+	if maxWidth > 0 && maxWidth < 40 {
+		nameWidth = maxWidth - itemPrefixWidth // Leave room for cursor, checkbox, status
 	}
 
-	line := fmt.Sprintf("%s%s ", cursor, checkbox)
-	namePart := fmt.Sprintf(" %-20s", bi.Item.Name)
-	descPart := dimStyle.Render(desc)
+	namePart := fmt.Sprintf(" %-*s", nameWidth, bi.Item.Name)
+
+	// Build the line
+	sb.WriteString(cursor)
+	sb.WriteString(checkbox)
+	sb.WriteString(" ")
+	sb.WriteString(statusStyle.Render(statusSymbol))
 
 	switch {
 	case idx == m.browserCursor:
-		sb.WriteString(selectedStyle.Render(line))
-		sb.WriteString(statusStyle.Render(statusSymbol))
 		sb.WriteString(selectedStyle.Render(namePart))
 	case bi.Status.IsInstalled():
-		sb.WriteString(normalStyle.Render(line))
-		sb.WriteString(statusStyle.Render(statusSymbol))
 		sb.WriteString(statusStyle.Render(namePart))
 	default:
-		sb.WriteString(normalStyle.Render(line))
-		sb.WriteString(statusSymbol)
 		sb.WriteString(normalStyle.Render(namePart))
 	}
 
-	sb.WriteString(" ")
-	sb.WriteString(descPart)
+	// Show description only if requested and there's space
+	if showDesc {
+		desc := bi.Item.Description
+		maxDescLen := maxWidth - nameWidth - descPrefixWidth // Approximate space for prefix
+
+		if maxDescLen > 10 && len(desc) > 0 {
+			if len(desc) > maxDescLen {
+				desc = desc[:maxDescLen-3] + "..."
+			}
+
+			sb.WriteString(" ")
+			sb.WriteString(dimStyle.Render(desc))
+		}
+	}
+
 	sb.WriteString("\n")
 }
 
