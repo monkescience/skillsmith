@@ -625,8 +625,13 @@ func (m *Model) renderSplitView() string {
 		listContent.WriteString(dimStyle.Render(scrollInfo))
 	}
 
+	// Calculate max height for preview (terminal height minus header, footer, borders, padding)
+	// Header: ~2 lines, Footer: ~4 lines, Sidebar border/padding: ~4 lines, margins: ~2 lines
+	previewOverhead := 12
+	maxPreviewHeight := max(m.height-previewOverhead, minVisibleItems)
+
 	// Render preview/sidebar content
-	previewContent := m.renderPreview(sidebarInnerWidth)
+	previewContent := m.renderPreview(sidebarInnerWidth, maxPreviewHeight)
 
 	// Create styled panels - list panel with left margin
 	listPanel := lipgloss.NewStyle().
@@ -637,6 +642,7 @@ func (m *Model) renderSplitView() string {
 	// Sidebar with border (OpenCode style)
 	sidebarPanel := sidebarStyle.
 		Width(sidebarWidth - sidebarBorderWidth). // Adjust for border
+		Height(maxPreviewHeight).
 		Render(previewContent)
 
 	// Join horizontally with small gap
@@ -673,7 +679,7 @@ func (m *Model) renderVisibleItemsCompact(sb *strings.Builder, visible int, maxW
 	}
 }
 
-func (m *Model) renderPreview(width int) string {
+func (m *Model) renderPreview(width, maxHeight int) string {
 	var sb strings.Builder
 
 	// Sidebar title
@@ -696,7 +702,18 @@ func (m *Model) renderPreview(width int) string {
 	m.renderPreviewMetadata(&sb, bi)
 	m.renderPreviewContent(&sb, item, width)
 
-	return sb.String()
+	// Truncate preview if it exceeds max height
+	content := sb.String()
+	lines := strings.Split(content, "\n")
+
+	if len(lines) > maxHeight {
+		lines = lines[:maxHeight-1]
+		lines = append(lines, dimStyle.Render("..."))
+
+		return strings.Join(lines, "\n")
+	}
+
+	return content
 }
 
 func (m *Model) renderPreviewMetadata(sb *strings.Builder, bi BrowserItem) {
