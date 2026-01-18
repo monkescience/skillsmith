@@ -1,0 +1,13 @@
+# Binary (only at root level)
+/skillsmith
+
+# Coverage
+coverage.out
+coverage.html
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
