@@ -25,14 +25,16 @@ const (
 
 // KeyMap defines the keybindings.
 type KeyMap struct {
-	Up     key.Binding
-	Down   key.Binding
-	Enter  key.Binding
-	Space  key.Binding
-	Filter key.Binding
-	Back   key.Binding
-	Quit   key.Binding
-	Help   key.Binding
+	Up          key.Binding
+	Down        key.Binding
+	Enter       key.Binding
+	Space       key.Binding
+	SelectAll   key.Binding
+	DeselectAll key.Binding
+	Filter      key.Binding
+	Back        key.Binding
+	Quit        key.Binding
+	Help        key.Binding
 }
 
 var keys = KeyMap{
@@ -47,6 +49,12 @@ var keys = KeyMap{
 	),
 	Space: key.NewBinding(
 		key.WithKeys(" "),
+	),
+	SelectAll: key.NewBinding(
+		key.WithKeys("a"),
+	),
+	DeselectAll: key.NewBinding(
+		key.WithKeys("d"),
 	),
 	Filter: key.NewBinding(
 		key.WithKeys("f"),
@@ -396,6 +404,14 @@ func (m *Model) updateBrowser(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.browserCursor < len(m.browserItems) {
 			m.browserItems[m.browserCursor].Selected = !m.browserItems[m.browserCursor].Selected
 		}
+	case key.Matches(msg, keys.SelectAll):
+		for i := range m.browserItems {
+			m.browserItems[i].Selected = true
+		}
+	case key.Matches(msg, keys.DeselectAll):
+		for i := range m.browserItems {
+			m.browserItems[i].Selected = false
+		}
 	case key.Matches(msg, keys.Enter):
 		m.openActionMenu()
 	case key.Matches(msg, keys.Filter):
@@ -457,7 +473,7 @@ func (m *Model) viewBrowser() string {
 	}
 
 	sb.WriteString("\n\n")
-	sb.WriteString(helpStyle.Render("[space] toggle  [enter] actions  [f] filter  [esc] back  [q] quit"))
+	sb.WriteString(helpStyle.Render("[space] toggle  [a] all  [d] none  [enter] actions  [esc] back  [q] quit"))
 
 	return boxStyle.Width(m.width - boxPadding).Render(sb.String())
 }
@@ -591,25 +607,6 @@ func (m *Model) buildMenuOptions() {
 			Enabled: true,
 		})
 	}
-
-	// Separator
-	m.menuOptions = append(m.menuOptions, MenuOption{
-		Label:   "─────────────────",
-		Action:  "separator",
-		Enabled: false,
-	})
-
-	m.menuOptions = append(m.menuOptions, MenuOption{
-		Label:   "Select all",
-		Action:  "select_all",
-		Enabled: true,
-	})
-
-	m.menuOptions = append(m.menuOptions, MenuOption{
-		Label:   "Select none",
-		Action:  "select_none",
-		Enabled: true,
-	})
 }
 
 func (m *Model) updateActionMenu(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -665,18 +662,6 @@ func (m *Model) executeMenuAction() {
 		m.installSelected(true)
 	case "uninstall":
 		m.uninstallSelected()
-	case "select_all":
-		for i := range m.browserItems {
-			m.browserItems[i].Selected = true
-		}
-
-		m.screen = ScreenBrowser
-	case "select_none":
-		for i := range m.browserItems {
-			m.browserItems[i].Selected = false
-		}
-
-		m.screen = ScreenBrowser
 	}
 }
 
