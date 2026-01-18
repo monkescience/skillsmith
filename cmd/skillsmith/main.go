@@ -1,28 +1,16 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 
-	"github.com/monke/skillsmith/internal/config"
-	"github.com/monke/skillsmith/internal/loader"
-	"github.com/monke/skillsmith/internal/registry"
+	"github.com/monke/skillsmith/internal/service"
 	"github.com/monke/skillsmith/internal/tui"
-)
-
-var (
-	errPathNotExist        = errors.New("path does not exist")
-	errPathNotDir          = errors.New("path is not a directory")
-	errRegistryExists      = errors.New("registry with this name already exists")
-	errCannotRemoveBuiltin = errors.New("cannot remove the builtin registry")
-	errRegistryNotFound    = errors.New("registry not found")
 )
 
 var version = "dev"
@@ -109,12 +97,12 @@ func init() {
 }
 
 func runTUI(_ *cobra.Command, _ []string) error {
-	multi, err := loader.LoadFromConfig()
+	svc, err := service.New()
 	if err != nil {
-		return fmt.Errorf("load registry: %w", err)
+		return fmt.Errorf("initialize service: %w", err)
 	}
 
-	model := tui.NewModel(multi.Registry())
+	model := tui.NewModel(svc)
 	p := tea.NewProgram(model, tea.WithAltScreen())
 
 	_, err = p.Run()
@@ -126,49 +114,59 @@ func runTUI(_ *cobra.Command, _ []string) error {
 }
 
 func runList(_ *cobra.Command, _ []string) error {
-	multi, err := loader.LoadFromConfig()
+	svc, err := service.New()
 	if err != nil {
-		return fmt.Errorf("load registry: %w", err)
+		return fmt.Errorf("initialize service: %w", err)
 	}
 
 	w := os.Stdout
 
-	writeListOutput(w, multi.Registry())
+	writeListOutput(w, svc)
 
 	return nil
 }
 
-func writeListOutput(w io.Writer, reg *registry.Registry) {
+func writeListOutput(w io.Writer, svc *service.Service) {
 	mustWrite(w, "Available agents and skills:\n\n")
 
-	// List agents
-	agents := reg.ByType(registry.ItemTypeAgent)
-	if len(agents) > 0 {
+	// List agents for all tools (use opencode as reference, items are the same)
+	items, _ := svc.ListItems(service.ListItemsInput{
+		Tool:  service.ToolOpenCode,
+		Scope: service.ScopeLocal,
+		Type:  service.ItemTypeAgent,
+	})
+
+	if len(items) > 0 {
 		mustWrite(w, "  Agents:\n")
 
-		for _, agent := range agents {
-			compat := formatCompatibility(agent.Compatibility)
-			mustWrite(w, "    - "+agent.Name+": "+agent.Description+" "+compat+"\n")
+		for _, item := range items {
+			compat := formatCompatibility(item.Item.Compatibility)
+			mustWrite(w, "    - "+item.Item.Name+": "+item.Item.Description+" "+compat+"\n")
 		}
 
 		mustWrite(w, "\n")
 	}
 
 	// List skills
-	skills := reg.ByType(registry.ItemTypeSkill)
+	skills, _ := svc.ListItems(service.ListItemsInput{
+		Tool:  service.ToolOpenCode,
+		Scope: service.ScopeLocal,
+		Type:  service.ItemTypeSkill,
+	})
+
 	if len(skills) > 0 {
 		mustWrite(w, "  Skills:\n")
 
-		for _, skill := range skills {
-			compat := formatCompatibility(skill.Compatibility)
-			mustWrite(w, "    - "+skill.Name+": "+skill.Description+" "+compat+"\n")
+		for _, item := range skills {
+			compat := formatCompatibility(item.Item.Compatibility)
+			mustWrite(w, "    - "+item.Item.Name+": "+item.Item.Description+" "+compat+"\n")
 		}
 
 		mustWrite(w, "\n")
 	}
 }
 
-func formatCompatibility(tools []registry.Tool) string {
+func formatCompatibility(tools []service.Tool) string {
 	if len(tools) == 0 {
 		return ""
 	}
@@ -186,135 +184,78 @@ func mustWrite(w io.Writer, s string) {
 }
 
 func runRegistryList(_ *cobra.Command, _ []string) error {
-	cfg, err := config.LoadConfig()
+	svc, err := service.New()
 	if err != nil {
-		return fmt.Errorf("load config: %w", err)
+		return fmt.Errorf("initialize service: %w", err)
+	}
+
+	registries, err := svc.ListRegistries()
+	if err != nil {
+		return fmt.Errorf("list registries: %w", err)
 	}
 
 	w := os.Stdout
 
 	mustWrite(w, "Configured registries:\n\n")
-	mustWrite(w, "  builtin (embedded)\n")
 
-	if len(cfg.Registries) == 0 {
-		mustWrite(w, "\nNo additional registries configured.\n")
-		mustWrite(w, "Use 'skillsmith registry add <name> <path>' to add one.\n")
-
-		return nil
-	}
-
-	for _, reg := range cfg.Registries {
+	for _, reg := range registries {
 		status := ""
-		if !reg.IsEnabled() {
+		if !reg.Enabled {
 			status = " (disabled)"
 		}
 
-		switch {
-		case reg.IsLocal():
+		switch reg.Type {
+		case "builtin":
+			mustWrite(w, fmt.Sprintf("  %s (embedded)%s\n", reg.Name, status))
+		case "local":
 			mustWrite(w, fmt.Sprintf("  %s: %s%s\n", reg.Name, reg.Path, status))
-		case reg.IsGit():
+		case "git":
 			mustWrite(w, fmt.Sprintf("  %s: %s%s\n", reg.Name, reg.URL, status))
 		}
+	}
+
+	// Check if only builtin exists
+	if len(registries) == 1 {
+		mustWrite(w, "\nNo additional registries configured.\n")
+		mustWrite(w, "Use 'skillsmith registry add <name> <path>' to add one.\n")
 	}
 
 	return nil
 }
 
 func runRegistryAdd(_ *cobra.Command, args []string) error {
+	svc, err := service.New()
+	if err != nil {
+		return fmt.Errorf("initialize service: %w", err)
+	}
+
 	name := args[0]
 	path := args[1]
 
-	// Expand ~ to home directory
-	if strings.HasPrefix(path, "~/") {
-		homeDir, err := os.UserHomeDir()
-		if err != nil {
-			return fmt.Errorf("get home directory: %w", err)
-		}
-
-		path = filepath.Join(homeDir, path[2:])
-	}
-
-	// Make path absolute
-	absPath, err := filepath.Abs(path)
-	if err != nil {
-		return fmt.Errorf("resolve path: %w", err)
-	}
-
-	// Verify path exists and is a directory
-	info, err := os.Stat(absPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return fmt.Errorf("%w: %s", errPathNotExist, absPath)
-		}
-
-		return fmt.Errorf("check path: %w", err)
-	}
-
-	if !info.IsDir() {
-		return fmt.Errorf("%w: %s", errPathNotDir, absPath)
-	}
-
-	cfg, err := config.LoadConfig()
-	if err != nil {
-		return fmt.Errorf("load config: %w", err)
-	}
-
-	// Check for duplicate name
-	for _, reg := range cfg.Registries {
-		if reg.Name == name {
-			return fmt.Errorf("%w: %s", errRegistryExists, name)
-		}
-	}
-
-	cfg.Registries = append(cfg.Registries, config.RegistrySource{
+	err = svc.AddRegistry(service.AddRegistryInput{
 		Name: name,
-		Path: absPath,
+		Path: path,
 	})
-
-	err = config.SaveConfig(cfg)
 	if err != nil {
-		return fmt.Errorf("save config: %w", err)
+		return fmt.Errorf("add registry: %w", err)
 	}
 
-	mustWrite(os.Stdout, fmt.Sprintf("Added registry %q from %s\n", name, absPath))
+	mustWrite(os.Stdout, fmt.Sprintf("Added registry %q from %s\n", name, path))
 
 	return nil
 }
 
 func runRegistryRemove(_ *cobra.Command, args []string) error {
+	svc, err := service.New()
+	if err != nil {
+		return fmt.Errorf("initialize service: %w", err)
+	}
+
 	name := args[0]
 
-	if name == "builtin" {
-		return errCannotRemoveBuiltin
-	}
-
-	cfg, err := config.LoadConfig()
+	err = svc.RemoveRegistry(name)
 	if err != nil {
-		return fmt.Errorf("load config: %w", err)
-	}
-
-	found := false
-	newRegistries := make([]config.RegistrySource, 0, len(cfg.Registries))
-
-	for _, reg := range cfg.Registries {
-		if reg.Name == name {
-			found = true
-
-			continue
-		}
-
-		newRegistries = append(newRegistries, reg)
-	}
-
-	if !found {
-		return fmt.Errorf("%w: %s", errRegistryNotFound, name)
-	}
-
-	cfg.Registries = newRegistries
-
-	err = config.SaveConfig(cfg)
-	if err != nil {
-		return fmt.Errorf("save config: %w", err)
+		return fmt.Errorf("remove registry: %w", err)
 	}
 
 	mustWrite(os.Stdout, fmt.Sprintf("Removed registry %q\n", name))

@@ -3,9 +3,7 @@ package tui
 import (
 	"github.com/charmbracelet/bubbles/key"
 
-	"github.com/monke/skillsmith/internal/config"
-	"github.com/monke/skillsmith/internal/installer"
-	"github.com/monke/skillsmith/internal/registry"
+	"github.com/monke/skillsmith/internal/service"
 )
 
 // Screen represents the current screen state.
@@ -63,9 +61,9 @@ var keys = KeyMap{
 
 // BrowserItem represents an item in the browser list.
 type BrowserItem struct {
-	Item     registry.Item
+	Item     service.Item
 	Selected bool
-	Status   installer.ItemState
+	Status   service.ItemState
 }
 
 // MenuOption represents an option in the action menu.
@@ -77,13 +75,13 @@ type MenuOption struct {
 
 // ToolSelectState holds state for the tool selection screen.
 type ToolSelectState struct {
-	Tools  []registry.Tool
+	Tools  []service.Tool
 	Cursor int
 }
 
 // ScopeSelectState holds state for the scope selection screen.
 type ScopeSelectState struct {
-	Scopes []config.Scope
+	Scopes []service.Scope
 	Cursor int
 }
 

@@ -8,9 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/monke/skillsmith/internal/config"
-	"github.com/monke/skillsmith/internal/installer"
-	"github.com/monke/skillsmith/internal/registry"
+	"github.com/monke/skillsmith/internal/service"
 )
 
 // loadBrowserItems populates the browser with items for the selected tool/scope.
@@ -18,14 +16,19 @@ func (m *Model) loadBrowserItems() {
 	m.browser.Items = nil
 	m.browser.Offset = 0
 
-	items := m.registry.ByTool(m.selectedTool)
+	items, err := m.svc.ListItems(service.ListItemsInput{
+		Tool:  m.selectedTool,
+		Scope: m.selectedScope,
+	})
+	if err != nil {
+		return
+	}
 
 	for _, item := range items {
-		state, _, _ := installer.GetItemState(item, m.selectedTool, m.selectedScope)
 		m.browser.Items = append(m.browser.Items, BrowserItem{
-			Item:     item,
+			Item:     item.Item,
 			Selected: false,
-			Status:   state,
+			Status:   item.State,
 		})
 	}
 }
@@ -201,7 +204,7 @@ func (m *Model) renderVisibleItemsCompact(sb *strings.Builder, visible int, maxW
 	start := m.browser.Offset
 	end := min(start+visible, len(m.browser.Items))
 
-	lastType := registry.ItemType("")
+	lastType := service.ItemType("")
 
 	for i := start; i < end; i++ {
 		bi := m.browser.Items[i]
@@ -212,9 +215,9 @@ func (m *Model) renderVisibleItemsCompact(sb *strings.Builder, visible int, maxW
 			}
 
 			switch bi.Item.Type {
-			case registry.ItemTypeAgent:
+			case service.ItemTypeAgent:
 				sb.WriteString(headerStyle.Render("Agents:"))
-			case registry.ItemTypeSkill:
+			case service.ItemTypeSkill:
 				sb.WriteString(headerStyle.Render("Skills:"))
 			}
 
@@ -231,7 +234,7 @@ func (m *Model) renderVisibleItemsCompact(sb *strings.Builder, visible int, maxW
 func (m *Model) renderVisibleItems(sb *strings.Builder, visible int) {
 	start := m.browser.Offset
 	end := min(start+visible, len(m.browser.Items))
-	lastType := registry.ItemType("")
+	lastType := service.ItemType("")
 
 	for i := start; i < end; i++ {
 		bi := m.browser.Items[i]
@@ -242,9 +245,9 @@ func (m *Model) renderVisibleItems(sb *strings.Builder, visible int) {
 			}
 
 			switch bi.Item.Type {
-			case registry.ItemTypeAgent:
+			case service.ItemTypeAgent:
 				sb.WriteString(headerStyle.Render("Agents:"))
-			case registry.ItemTypeSkill:
+			case service.ItemTypeSkill:
 				sb.WriteString(headerStyle.Render("Skills:"))
 			}
 
@@ -318,9 +321,9 @@ func (m *Model) renderPreviewMetadata(sb *strings.Builder, bi BrowserItem) {
 	sb.WriteString(dimStyle.Render("type: "))
 
 	switch bi.Item.Type {
-	case registry.ItemTypeAgent:
+	case service.ItemTypeAgent:
 		sb.WriteString(accentStyle.Render("agent"))
-	case registry.ItemTypeSkill:
+	case service.ItemTypeSkill:
 		sb.WriteString(modifiedStyle.Render("skill"))
 	}
 
@@ -330,7 +333,7 @@ func (m *Model) renderPreviewMetadata(sb *strings.Builder, bi BrowserItem) {
 	sb.WriteString(getStatusLabel(bi.Status))
 	sb.WriteString("\n")
 
-	path, _ := config.GetInstallPath(bi.Item, m.selectedTool, m.selectedScope)
+	path, _ := m.svc.GetInstallPath(bi.Item.Name, m.selectedTool, m.selectedScope)
 
 	sb.WriteString(bullet)
 	sb.WriteString(dimStyle.Render("path: "))
@@ -339,7 +342,7 @@ func (m *Model) renderPreviewMetadata(sb *strings.Builder, bi BrowserItem) {
 }
 
 // renderPreviewContent renders the description and content sections of the preview.
-func (m *Model) renderPreviewContent(sb *strings.Builder, item registry.Item, width int) {
+func (m *Model) renderPreviewContent(sb *strings.Builder, item service.Item, width int) {
 	divider := previewDividerStyle.Render(strings.Repeat("-", min(width, previewDividerLen)))
 
 	if item.Description != "" {

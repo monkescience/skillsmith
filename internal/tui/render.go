@@ -6,7 +6,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/monke/skillsmith/internal/installer"
+	"github.com/monke/skillsmith/internal/service"
 )
 
 // renderLayout renders a borderless layout with pinned header and footer.
@@ -95,17 +95,17 @@ func wrapText(text string, width int) string {
 }
 
 // getStatusIndicator returns the symbol and style for a given item state.
-func getStatusIndicator(status installer.ItemState) (string, lipgloss.Style) {
+func getStatusIndicator(status service.ItemState) (string, lipgloss.Style) {
 	switch status {
-	case installer.StateNotInstalled:
+	case service.StateNotInstalled:
 		return " ", normalStyle
-	case installer.StateUpToDate:
+	case service.StateUpToDate:
 		return SymbolInstalled, installedStyle
-	case installer.StateUpdateAvailable:
+	case service.StateUpdateAvailable:
 		return SymbolUpdate, updateStyle
-	case installer.StateModified:
+	case service.StateModified:
 		return SymbolModified, modifiedStyle
-	case installer.StateModifiedWithUpdate:
+	case service.StateModifiedWithUpdate:
 		return SymbolUpdate + SymbolModified, updateStyle
 	default:
 		return " ", normalStyle
@@ -113,17 +113,17 @@ func getStatusIndicator(status installer.ItemState) (string, lipgloss.Style) {
 }
 
 // getStatusLabel returns a full status label for the preview sidebar.
-func getStatusLabel(status installer.ItemState) string {
+func getStatusLabel(status service.ItemState) string {
 	switch status {
-	case installer.StateNotInstalled:
+	case service.StateNotInstalled:
 		return dimStyle.Render("not installed")
-	case installer.StateUpToDate:
+	case service.StateUpToDate:
 		return installedStyle.Render("installed")
-	case installer.StateUpdateAvailable:
+	case service.StateUpdateAvailable:
 		return updateStyle.Render("update available")
-	case installer.StateModified:
+	case service.StateModified:
 		return modifiedStyle.Render("modified locally")
-	case installer.StateModifiedWithUpdate:
+	case service.StateModifiedWithUpdate:
 		return updateStyle.Render("modified + update")
 	default:
 		return dimStyle.Render("unknown")
@@ -131,17 +131,17 @@ func getStatusLabel(status installer.ItemState) string {
 }
 
 // getStatusShortLabel returns a short status label for display in the action preview.
-func getStatusShortLabel(status installer.ItemState) string {
+func getStatusShortLabel(status service.ItemState) string {
 	switch status {
-	case installer.StateNotInstalled:
+	case service.StateNotInstalled:
 		return "new"
-	case installer.StateUpToDate:
+	case service.StateUpToDate:
 		return "installed"
-	case installer.StateUpdateAvailable:
+	case service.StateUpdateAvailable:
 		return "update available"
-	case installer.StateModified:
+	case service.StateModified:
 		return "modified"
-	case installer.StateModifiedWithUpdate:
+	case service.StateModifiedWithUpdate:
 		return "modified + update"
 	default:
 		return "unknown"

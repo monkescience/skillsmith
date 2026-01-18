@@ -8,8 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/monke/skillsmith/internal/config"
-	"github.com/monke/skillsmith/internal/registry"
+	"github.com/monke/skillsmith/internal/service"
 )
 
 // updateToolSelect handles input for the tool selection screen.
@@ -41,52 +40,7 @@ func (m *Model) viewToolSelect() string {
 	content.WriteString("Select target tool:\n\n")
 
 	for i, tool := range m.toolSelect.Tools {
-		cursor := "  "
-		if i == m.toolSelect.Cursor {
-			cursor = SymbolCursor + " "
-		}
-
-		// Count compatible items
-		items := m.registry.ByTool(tool)
-		agents := 0
-		skills := 0
-
-		for _, item := range items {
-			if item.Type == registry.ItemTypeAgent {
-				agents++
-			} else {
-				skills++
-			}
-		}
-
-		// Count installed items per scope
-		localInstalled, localUpdates := m.countInstalledForTool(tool, config.ScopeLocal)
-		globalInstalled, globalUpdates := m.countInstalledForTool(tool, config.ScopeGlobal)
-		totalUpdates := localUpdates + globalUpdates
-
-		line := fmt.Sprintf("%s%s", cursor, tool)
-		stats := dimStyle.Render(fmt.Sprintf("  %d agents, %d skills", agents, skills))
-
-		var installedInfo string
-		if totalUpdates > 0 {
-			installedInfo = fmt.Sprintf("  (%d local, %d global, ", localInstalled, globalInstalled)
-			installedInfo += updateStyle.Render(fmt.Sprintf("%d updates", totalUpdates))
-			installedInfo += dimStyle.Render(")")
-		} else {
-			installedInfo = dimStyle.Render(fmt.Sprintf("  (%d local, %d global)", localInstalled, globalInstalled))
-		}
-
-		if i == m.toolSelect.Cursor {
-			content.WriteString(selectedStyle.Render(line))
-			content.WriteString(stats)
-			content.WriteString(installedInfo)
-		} else {
-			content.WriteString(normalStyle.Render(line))
-			content.WriteString(stats)
-			content.WriteString(installedInfo)
-		}
-
-		content.WriteString("\n")
+		m.renderToolOption(&content, i, tool)
 	}
 
 	footer := helpStyle.Render("[enter] select  [q] quit")
@@ -95,4 +49,63 @@ func (m *Model) viewToolSelect() string {
 		Render(content.String())
 
 	return m.renderLayout(header, paddedContent, footer)
+}
+
+// renderToolOption renders a single tool option in the tool selection screen.
+func (m *Model) renderToolOption(content *strings.Builder, idx int, tool service.Tool) {
+	cursor := "  "
+	if idx == m.toolSelect.Cursor {
+		cursor = SymbolCursor + " "
+	}
+
+	agents, skills := m.countItemTypesForTool(tool)
+
+	localInstalled, localUpdates := m.countInstalledForTool(tool, service.ScopeLocal)
+	globalInstalled, globalUpdates := m.countInstalledForTool(tool, service.ScopeGlobal)
+	totalUpdates := localUpdates + globalUpdates
+
+	line := fmt.Sprintf("%s%s", cursor, tool)
+	stats := dimStyle.Render(fmt.Sprintf("  %d agents, %d skills", agents, skills))
+	installedInfo := m.formatInstalledInfo(localInstalled, globalInstalled, totalUpdates)
+
+	if idx == m.toolSelect.Cursor {
+		content.WriteString(selectedStyle.Render(line))
+	} else {
+		content.WriteString(normalStyle.Render(line))
+	}
+
+	content.WriteString(stats)
+	content.WriteString(installedInfo)
+	content.WriteString("\n")
+}
+
+// countItemTypesForTool returns the count of agents and skills for a tool.
+func (m *Model) countItemTypesForTool(tool service.Tool) (int, int) {
+	items, _ := m.svc.ListItems(service.ListItemsInput{
+		Tool:  tool,
+		Scope: service.ScopeLocal,
+	})
+
+	var agents, skills int
+
+	for _, item := range items {
+		if item.Item.Type == service.ItemTypeAgent {
+			agents++
+		} else {
+			skills++
+		}
+	}
+
+	return agents, skills
+}
+
+// formatInstalledInfo formats the installed/update count info string.
+func (m *Model) formatInstalledInfo(localInstalled, globalInstalled, totalUpdates int) string {
+	if totalUpdates > 0 {
+		return fmt.Sprintf("  (%d local, %d global, ", localInstalled, globalInstalled) +
+			updateStyle.Render(fmt.Sprintf("%d updates", totalUpdates)) +
+			dimStyle.Render(")")
+	}
+
+	return dimStyle.Render(fmt.Sprintf("  (%d local, %d global)", localInstalled, globalInstalled))
 }
