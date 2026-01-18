@@ -782,7 +782,7 @@ func (m *Model) renderPreviewContent(sb *strings.Builder, item registry.Item, wi
 	}
 }
 
-// wrapText wraps text to the specified width.
+// wrapText wraps text to the specified width while preserving existing newlines.
 func wrapText(text string, width int) string {
 	if width <= 0 {
 		return text
@@ -790,25 +790,35 @@ func wrapText(text string, width int) string {
 
 	var result strings.Builder
 
-	words := strings.Fields(text)
-	lineLen := 0
+	// Process each line separately to preserve original line breaks
+	lines := strings.Split(text, "\n")
 
-	for i, word := range words {
-		wordLen := len(word)
-
-		if lineLen+wordLen+1 > width && lineLen > 0 {
+	for lineIdx, line := range lines {
+		if lineIdx > 0 {
 			result.WriteString("\n")
-
-			lineLen = 0
-		} else if i > 0 && lineLen > 0 {
-			result.WriteString(" ")
-
-			lineLen++
 		}
 
-		result.WriteString(word)
+		// Wrap this single line
+		words := strings.Fields(line)
+		lineLen := 0
 
-		lineLen += wordLen
+		for i, word := range words {
+			wordLen := len(word)
+
+			if lineLen+wordLen+1 > width && lineLen > 0 {
+				result.WriteString("\n")
+
+				lineLen = 0
+			} else if i > 0 && lineLen > 0 {
+				result.WriteString(" ")
+
+				lineLen++
+			}
+
+			result.WriteString(word)
+
+			lineLen += wordLen
+		}
 	}
 
 	return result.String()
