@@ -186,17 +186,46 @@ func (m *Model) View() string {
 	}
 }
 
-// renderFullScreen renders content in a box that fills the terminal.
-func (m *Model) renderFullScreen(content string) string {
-	// Account for border (2) and padding (2 top/bottom from boxInnerPadding via Padding(1, ...))
-	// Border takes 2 lines (top + bottom), padding adds 1 line each side = 4 total
+// renderLayout renders a full-screen layout with pinned header and footer.
+func (m *Model) renderLayout(header, content, footer string) string {
+	// Calculate dimensions
+	// Box chrome: border (2) + padding (2 top/bottom)
 	boxChrome := 4
+	innerWidth := m.width - boxPadding - boxChrome
 	innerHeight := max(m.height-boxChrome, 1)
 
+	// Count lines in header and footer
+	headerLines := strings.Count(header, "\n") + 1
+	footerLines := strings.Count(footer, "\n") + 1
+
+	// Calculate content area height
+	contentHeight := max(innerHeight-headerLines-footerLines, 1)
+
+	// Build the layout
+	var sb strings.Builder
+
+	// Header (pinned top)
+	sb.WriteString(header)
+	sb.WriteString("\n")
+
+	// Content (fills middle, with vertical padding)
+	contentLines := strings.Count(content, "\n") + 1
+	sb.WriteString(content)
+
+	// Add padding to push footer to bottom
+	padding := contentHeight - contentLines
+	for range padding {
+		sb.WriteString("\n")
+	}
+
+	// Footer (pinned bottom)
+	sb.WriteString("\n")
+	sb.WriteString(footer)
+
 	return boxStyle.
-		Width(m.width - boxPadding).
+		Width(innerWidth + boxInnerPadding*2).
 		Height(innerHeight).
-		Render(content)
+		Render(sb.String())
 }
 
 // =============================================================================
@@ -223,11 +252,13 @@ func (m *Model) updateToolSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) viewToolSelect() string {
-	var sb strings.Builder
+	// Header
+	header := titleStyle.Render("skillsmith")
 
-	sb.WriteString(titleStyle.Render("skillsmith"))
-	sb.WriteString("\n\n")
-	sb.WriteString("Select target tool:\n\n")
+	// Content
+	var content strings.Builder
+
+	content.WriteString("Select target tool:\n\n")
 
 	for i, tool := range m.tools {
 		cursor := "  "
@@ -252,20 +283,20 @@ func (m *Model) viewToolSelect() string {
 		stats := dimStyle.Render(fmt.Sprintf("  %d agents, %d skills", agents, skills))
 
 		if i == m.toolCursor {
-			sb.WriteString(selectedStyle.Render(line))
-			sb.WriteString(stats)
+			content.WriteString(selectedStyle.Render(line))
+			content.WriteString(stats)
 		} else {
-			sb.WriteString(normalStyle.Render(line))
-			sb.WriteString(stats)
+			content.WriteString(normalStyle.Render(line))
+			content.WriteString(stats)
 		}
 
-		sb.WriteString("\n")
+		content.WriteString("\n")
 	}
 
-	sb.WriteString("\n")
-	sb.WriteString(helpStyle.Render("[enter] select  [q] quit"))
+	// Footer
+	footer := helpStyle.Render("[enter] select  [q] quit")
 
-	return m.renderFullScreen(sb.String())
+	return m.renderLayout(header, content.String(), footer)
 }
 
 // =============================================================================
@@ -295,15 +326,17 @@ func (m *Model) updateScopeSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) viewScopeSelect() string {
-	var sb strings.Builder
-
 	// Header with breadcrumb
-	sb.WriteString(titleStyle.Render("skillsmith"))
-	sb.WriteString(dimStyle.Render(" > "))
-	sb.WriteString(normalStyle.Render(string(m.selectedTool)))
-	sb.WriteString("\n\n")
+	var header strings.Builder
 
-	sb.WriteString("Install location:\n\n")
+	header.WriteString(titleStyle.Render("skillsmith"))
+	header.WriteString(dimStyle.Render(" > "))
+	header.WriteString(normalStyle.Render(string(m.selectedTool)))
+
+	// Content
+	var content strings.Builder
+
+	content.WriteString("Install location:\n\n")
 
 	for i, scope := range m.scopes {
 		cursor := "  "
@@ -329,20 +362,20 @@ func (m *Model) viewScopeSelect() string {
 		pathInfo := dimStyle.Render(fmt.Sprintf("%s  (%d installed)", path, installed))
 
 		if i == m.scopeCursor {
-			sb.WriteString(selectedStyle.Render(line))
-			sb.WriteString(pathInfo)
+			content.WriteString(selectedStyle.Render(line))
+			content.WriteString(pathInfo)
 		} else {
-			sb.WriteString(normalStyle.Render(line))
-			sb.WriteString(pathInfo)
+			content.WriteString(normalStyle.Render(line))
+			content.WriteString(pathInfo)
 		}
 
-		sb.WriteString("\n")
+		content.WriteString("\n")
 	}
 
-	sb.WriteString("\n")
-	sb.WriteString(helpStyle.Render("[enter] select  [esc] back  [q] quit"))
+	// Footer
+	footer := helpStyle.Render("[enter] select  [esc] back  [q] quit")
 
-	return m.renderFullScreen(sb.String())
+	return m.renderLayout(header.String(), content.String(), footer)
 }
 
 func (m *Model) getLocalPath() string {
@@ -472,56 +505,58 @@ func (m *Model) ensureCursorVisible() {
 }
 
 func (m *Model) viewBrowser() string {
-	var sb strings.Builder
-
 	// Header with breadcrumb
-	sb.WriteString(titleStyle.Render("skillsmith"))
-	sb.WriteString(dimStyle.Render(" > "))
-	sb.WriteString(normalStyle.Render(string(m.selectedTool)))
-	sb.WriteString(dimStyle.Render(" > "))
-	sb.WriteString(normalStyle.Render(m.getScopeLabel()))
-	sb.WriteString("\n\n")
+	var header strings.Builder
+
+	header.WriteString(titleStyle.Render("skillsmith"))
+	header.WriteString(dimStyle.Render(" > "))
+	header.WriteString(normalStyle.Render(string(m.selectedTool)))
+	header.WriteString(dimStyle.Render(" > "))
+	header.WriteString(normalStyle.Render(m.getScopeLabel()))
+
+	// Content
+	var content strings.Builder
 
 	// Calculate visible range
 	visible := m.visibleItemCount()
 	totalItems := len(m.browserItems)
 
 	// Render visible items with scroll indicator
-	m.renderVisibleItems(&sb, visible)
+	m.renderVisibleItems(&content, visible)
 
 	// Scroll indicator
 	if totalItems > visible {
 		end := min(m.browserOffset+visible, totalItems)
 		scrollInfo := fmt.Sprintf("[%d-%d of %d]", m.browserOffset+1, end, totalItems)
-		sb.WriteString(dimStyle.Render(scrollInfo))
-		sb.WriteString("\n")
+		content.WriteString(dimStyle.Render(scrollInfo))
+		content.WriteString("\n")
 	}
 
-	// Status line
-	sb.WriteString("\n")
+	// Footer with status and help
+	var footer strings.Builder
 
 	selected, installedCount, newCount := m.countSelected()
 
 	if selected > 0 {
 		status := fmt.Sprintf("%d selected (%d installed, %d new)", selected, installedCount, newCount)
-		sb.WriteString(normalStyle.Render(status))
+		footer.WriteString(normalStyle.Render(status))
 	} else {
-		sb.WriteString(dimStyle.Render("No items selected"))
+		footer.WriteString(dimStyle.Render("No items selected"))
 	}
 
-	sb.WriteString("\n")
+	footer.WriteString("\n")
 
 	// Current item path
 	if m.browserCursor < len(m.browserItems) {
 		item := m.browserItems[m.browserCursor].Item
 		path, _ := config.GetInstallPath(item, m.selectedTool, m.selectedScope)
-		sb.WriteString(pathStyle.Render(path))
+		footer.WriteString(pathStyle.Render(path))
 	}
 
-	sb.WriteString("\n\n")
-	sb.WriteString(helpStyle.Render("[space] toggle  [a] all  [d] none  [enter] actions  [esc] back  [q] quit"))
+	footer.WriteString("\n\n")
+	footer.WriteString(helpStyle.Render("[space] toggle  [a] all  [d] none  [enter] actions  [esc] back  [q] quit"))
 
-	return m.renderFullScreen(sb.String())
+	return m.renderLayout(header.String(), content.String(), footer.String())
 }
 
 func (m *Model) renderVisibleItems(sb *strings.Builder, visible int) {
@@ -808,18 +843,16 @@ func (m *Model) uninstallSelected() {
 }
 
 func (m *Model) viewActionMenu() string {
-	var sb strings.Builder
+	// Header with breadcrumb
+	var header strings.Builder
 
-	// Header with breadcrumb (same as browser)
-	sb.WriteString(titleStyle.Render("skillsmith"))
-	sb.WriteString(dimStyle.Render(" > "))
-	sb.WriteString(normalStyle.Render(string(m.selectedTool)))
-	sb.WriteString(dimStyle.Render(" > "))
+	header.WriteString(titleStyle.Render("skillsmith"))
+	header.WriteString(dimStyle.Render(" > "))
+	header.WriteString(normalStyle.Render(string(m.selectedTool)))
+	header.WriteString(dimStyle.Render(" > "))
+	header.WriteString(normalStyle.Render(m.getScopeLabel()))
 
-	sb.WriteString(normalStyle.Render(m.getScopeLabel()))
-	sb.WriteString("\n\n")
-
-	// Menu box
+	// Content - menu box
 	var menuContent strings.Builder
 
 	selected, _, _ := m.countSelected()
@@ -844,10 +877,10 @@ func (m *Model) viewActionMenu() string {
 		menuContent.WriteString("\n")
 	}
 
-	menuContent.WriteString("\n")
-	menuContent.WriteString(helpStyle.Render("[enter] confirm  [esc] cancel"))
+	content := menuBoxStyle.Render(menuContent.String())
 
-	sb.WriteString(menuBoxStyle.Render(menuContent.String()))
+	// Footer
+	footer := helpStyle.Render("[enter] confirm  [esc] cancel")
 
-	return m.renderFullScreen(sb.String())
+	return m.renderLayout(header.String(), content, footer)
 }
