@@ -65,6 +65,9 @@ type Item struct {
 
 	// SourcePath is the path to the source file (for debugging).
 	SourcePath string `yaml:"-"`
+
+	// Source is the name of the registry source this item came from.
+	Source string `yaml:"-"`
 }
 
 // IsCompatibleWith checks if the item is compatible with a given tool.
