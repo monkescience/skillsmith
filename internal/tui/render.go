@@ -148,15 +148,22 @@ func getStatusShortLabel(status installer.ItemState) string {
 	}
 }
 
+// getSourceTag returns a formatted source tag for non-builtin items.
+func getSourceTag(source string) string {
+	if source != "" && source != BuiltinSourceName {
+		return fmt.Sprintf(" [%s]", source)
+	}
+
+	return ""
+}
+
 // renderItem renders a single browser list item.
 func (m *Model) renderItem(sb *strings.Builder, idx int, showDesc bool, maxWidth int) {
 	bi := m.browser.Items[idx]
 
-	var checkbox string
+	checkbox := dimStyle.Render(SymbolUnselected)
 	if bi.Selected {
 		checkbox = selectedCheckStyle.Render(SymbolSelected)
-	} else {
-		checkbox = dimStyle.Render(SymbolUnselected)
 	}
 
 	statusSymbol, statusStyle := getStatusIndicator(bi.Status)
@@ -171,13 +178,8 @@ func (m *Model) renderItem(sb *strings.Builder, idx int, showDesc bool, maxWidth
 		nameWidth = maxWidth - itemPrefixWidth
 	}
 
-	// Add external indicator for non-builtin sources
-	name := bi.Item.Name
-	if bi.Item.Source != "" && bi.Item.Source != BuiltinSourceName {
-		name = bi.Item.Name + SymbolExternal
-	}
-
-	namePart := fmt.Sprintf(" %-*s", nameWidth, name)
+	namePart := fmt.Sprintf(" %-*s", nameWidth, bi.Item.Name)
+	sourceTag := getSourceTag(bi.Item.Source)
 
 	sb.WriteString(cursor)
 	sb.WriteString(checkbox)
@@ -193,19 +195,27 @@ func (m *Model) renderItem(sb *strings.Builder, idx int, showDesc bool, maxWidth
 		sb.WriteString(normalStyle.Render(namePart))
 	}
 
+	if sourceTag != "" {
+		sb.WriteString(dimStyle.Render(sourceTag))
+	}
+
 	if showDesc {
-		desc := bi.Item.Description
-		maxDescLen := maxWidth - nameWidth - itemPrefixWidth - descPaddingExtra
-
-		if maxDescLen > 10 && len(desc) > 0 {
-			if len(desc) > maxDescLen {
-				desc = desc[:maxDescLen-3] + "..."
-			}
-
-			sb.WriteString(" ")
-			sb.WriteString(dimStyle.Render(desc))
-		}
+		m.renderItemDescription(sb, bi.Item.Description, maxWidth, nameWidth, len(sourceTag))
 	}
 
 	sb.WriteString("\n")
+}
+
+// renderItemDescription renders the description portion of a list item.
+func (m *Model) renderItemDescription(sb *strings.Builder, desc string, maxWidth, nameWidth, sourceTagLen int) {
+	maxDescLen := maxWidth - nameWidth - itemPrefixWidth - descPaddingExtra - sourceTagLen
+
+	if maxDescLen > 10 && len(desc) > 0 {
+		if len(desc) > maxDescLen {
+			desc = desc[:maxDescLen-3] + "..."
+		}
+
+		sb.WriteString(" ")
+		sb.WriteString(dimStyle.Render(desc))
+	}
 }

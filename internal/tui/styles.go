@@ -123,7 +123,6 @@ const (
 	SymbolModified   = "*"
 	SymbolCursor     = ">"
 	SymbolBullet     = "*"
-	SymbolExternal   = "*" // Indicates item from external registry
 )
 
 // BuiltinSourceName is the name of the embedded/builtin registry source.
