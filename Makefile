@@ -1,7 +1,7 @@
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 BINARY := skillsmith
 
-.PHONY: build test lint fmt clean mod-tidy coverage help install
+.PHONY: build run test lint fmt clean mod-tidy coverage help install
 
 help: ## Show help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-15s %s\n", $$1, $$2}'
@@ -11,6 +11,9 @@ build: ## Build the binary
 
 install: build ## Install to GOPATH/bin
 	go install -ldflags "-X main.version=$(VERSION)" ./cmd/skillsmith
+
+run: build ## Run the TUI
+	./$(BINARY) tui
 
 test: ## Run tests
 	go test -race ./...
