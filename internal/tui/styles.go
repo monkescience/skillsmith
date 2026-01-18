@@ -4,20 +4,19 @@ import "github.com/charmbracelet/lipgloss"
 
 // Layout constants.
 const (
-	boxPadding         = 4
-	boxInnerPadding    = 2
-	boxBorderWidth     = 4 // Total border width (left + right)
-	descPaddingWidth   = 50
-	minVisibleItems    = 3
-	minWidthForPreview = 100 // Minimum terminal width to show preview pane
-	listWidthPercent   = 40  // Percentage of width for list in split view
-	percentDivisor     = 100
-	dividerSpacing     = 3  // Space for divider and padding
-	previewPadding     = 2  // Padding inside preview
-	previewDividerLen  = 40 // Max length of preview divider line
-	previewMaxLines    = 15 // Max lines to show in preview body
-	itemPrefixWidth    = 10 // Width for cursor, checkbox, status
-	descPrefixWidth    = 12 // Width for item prefix before description
+	mainLeftPadding      = 2  // Left margin for main content area
+	mainLeftPaddingTotal = 4  // mainLeftPadding * 2 (both sides)
+	sidebarPadding       = 2  // Padding inside sidebar
+	sidebarPaddingTotal  = 4  // sidebarPadding * 2 (both sides)
+	minVisibleItems      = 3  // Minimum items to show in list
+	minWidthForPreview   = 80 // Minimum terminal width to show preview pane
+	listWidthPercent     = 40 // Percentage of width for list (sidebar gets rest)
+	percentDivisor       = 100
+	sidebarBorderWidth   = 2  // Border takes 2 chars (left + right)
+	previewMaxLines      = 25 // Max lines to show in preview body (more room now)
+	previewDividerLen    = 20 // Length of section dividers in preview
+	itemPrefixWidth      = 10 // Width for cursor, checkbox, status
+	descPaddingExtra     = 2  // Extra padding for description calculation
 )
 
 // Scope labels.
@@ -44,7 +43,7 @@ var (
 var (
 	titleStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(blue)
+			Foreground(white)
 
 	// Accent style for highlights.
 	accentStyle = lipgloss.NewStyle().
@@ -64,7 +63,7 @@ var (
 	// Category/header styles.
 	headerStyle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(blue)
+			Foreground(white)
 
 	// Status indicators.
 	installedStyle = lipgloss.NewStyle().
@@ -86,27 +85,41 @@ var (
 	selectedCheckStyle = lipgloss.NewStyle().
 				Foreground(green)
 
-	// Box/border styles.
-	boxStyle = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(darkGray).
-			Padding(1, boxInnerPadding)
-
+	// Menu box style (for action menu overlay).
 	menuBoxStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(blue).
-			Padding(1, boxInnerPadding)
+			Padding(1, sidebarPadding)
+
+	// Sidebar styles (right panel with border).
+	sidebarStyle = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(darkGray).
+			Padding(1, sidebarPadding)
+
+	sidebarTitleStyle = lipgloss.NewStyle().
+				Bold(true).
+				Foreground(white)
+
+	// Section headers inside sidebar.
+	sectionHeaderStyle = lipgloss.NewStyle().
+				Bold(true).
+				Foreground(lightGray)
 
 	// Preview pane styles.
 	previewHeaderStyle = lipgloss.NewStyle().
 				Bold(true).
-				Foreground(blue)
+				Foreground(white)
 
 	previewDividerStyle = lipgloss.NewStyle().
 				Foreground(darkGray)
 
 	previewBodyStyle = lipgloss.NewStyle().
 				Foreground(lightGray)
+
+	// Bullet style.
+	bulletStyle = lipgloss.NewStyle().
+			Foreground(gray)
 
 	// Path display.
 	pathStyle = lipgloss.NewStyle().
@@ -115,25 +128,15 @@ var (
 	// Help text.
 	helpStyle = lipgloss.NewStyle().
 			Foreground(gray)
-
-	// Badge styles.
-	badgeAgentStyle = lipgloss.NewStyle().
-			Foreground(black).
-			Background(blue).
-			Padding(0, 1)
-
-	badgeSkillStyle = lipgloss.NewStyle().
-			Foreground(black).
-			Background(cyan).
-			Padding(0, 1)
 )
 
 // Symbols.
 const (
 	SymbolSelected   = "[x]"
 	SymbolUnselected = "[ ]"
-	SymbolInstalled  = "✓"
-	SymbolUpdate     = "↑"
+	SymbolInstalled  = "+"
+	SymbolUpdate     = "^"
 	SymbolModified   = "*"
 	SymbolCursor     = ">"
+	SymbolBullet     = "*"
 )

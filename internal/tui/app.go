@@ -180,31 +180,35 @@ func (m *Model) View() string {
 	}
 }
 
-// renderLayout renders a full-screen layout with pinned header and footer.
+// renderLayout renders a borderless layout with pinned header and footer.
 func (m *Model) renderLayout(header, content, footer string) string {
-	// Calculate dimensions
-	// Box chrome: border (2) + padding (2 top/bottom)
-	boxChrome := 4
-	innerWidth := m.width - boxPadding - boxChrome
-	innerHeight := max(m.height-boxChrome, 1)
-
 	// Count lines in header and footer
 	headerLines := strings.Count(header, "\n") + 1
 	footerLines := strings.Count(footer, "\n") + 1
 
-	// Calculate content area height
-	contentHeight := max(innerHeight-headerLines-footerLines, 1)
+	// Calculate content area height (full terminal height minus header/footer/margins)
+	margins := 2 // Top and bottom margin
+	contentHeight := max(m.height-headerLines-footerLines-margins, 1)
 
-	// Build the layout
+	// Build the layout with left padding
 	var sb strings.Builder
 
+	leftPad := strings.Repeat(" ", mainLeftPadding)
+
 	// Header (pinned top)
+	sb.WriteString(leftPad)
 	sb.WriteString(header)
-	sb.WriteString("\n")
+	sb.WriteString("\n\n")
 
 	// Content (fills middle, with vertical padding)
 	contentLines := strings.Count(content, "\n") + 1
-	sb.WriteString(content)
+
+	// Add left padding to each content line
+	for line := range strings.SplitSeq(content, "\n") {
+		sb.WriteString(leftPad)
+		sb.WriteString(line)
+		sb.WriteString("\n")
+	}
 
 	// Add padding to push footer to bottom
 	padding := contentHeight - contentLines
@@ -213,13 +217,10 @@ func (m *Model) renderLayout(header, content, footer string) string {
 	}
 
 	// Footer (pinned bottom)
-	sb.WriteString("\n")
+	sb.WriteString(leftPad)
 	sb.WriteString(footer)
 
-	return boxStyle.
-		Width(innerWidth + boxInnerPadding*2).
-		Height(innerHeight).
-		Render(sb.String())
+	return sb.String()
 }
 
 // =============================================================================
@@ -594,12 +595,15 @@ func (m *Model) renderListOnly() string {
 }
 
 func (m *Model) renderSplitView() string {
-	// Calculate widths
-	innerWidth := m.width - boxPadding - boxBorderWidth
-	listWidth := (innerWidth * listWidthPercent) / percentDivisor
-	previewWidth := innerWidth - listWidth - dividerSpacing
+	// Calculate widths: list 40%, sidebar 60%
+	availableWidth := m.width - mainLeftPaddingTotal // Account for left padding
+	listWidth := (availableWidth * listWidthPercent) / percentDivisor
+	sidebarWidth := availableWidth - listWidth - 1 // -1 for gap between panels
 
-	// Render list panel
+	// Calculate sidebar inner width (minus border and padding)
+	sidebarInnerWidth := sidebarWidth - sidebarBorderWidth - sidebarPaddingTotal
+
+	// Render list panel (no border)
 	var listContent strings.Builder
 
 	visible := m.visibleItemCount()
@@ -613,23 +617,21 @@ func (m *Model) renderSplitView() string {
 		listContent.WriteString(dimStyle.Render(scrollInfo))
 	}
 
-	// Render preview panel
-	previewContent := m.renderPreview(previewWidth)
+	// Render preview/sidebar content
+	previewContent := m.renderPreview(sidebarInnerWidth)
 
 	// Create styled panels
 	listPanel := lipgloss.NewStyle().
 		Width(listWidth).
 		Render(listContent.String())
 
-	divider := previewDividerStyle.Render("│")
-
-	previewPanel := lipgloss.NewStyle().
-		Width(previewWidth).
-		PaddingLeft(1).
+	// Sidebar with border (OpenCode style)
+	sidebarPanel := sidebarStyle.
+		Width(sidebarWidth - sidebarBorderWidth). // Adjust for border
 		Render(previewContent)
 
-	// Join horizontally
-	return lipgloss.JoinHorizontal(lipgloss.Top, listPanel, divider, previewPanel)
+	// Join horizontally with small gap
+	return lipgloss.JoinHorizontal(lipgloss.Top, listPanel, " ", sidebarPanel)
 }
 
 func (m *Model) renderVisibleItemsCompact(sb *strings.Builder, visible int, maxWidth int) {
@@ -663,57 +665,103 @@ func (m *Model) renderVisibleItemsCompact(sb *strings.Builder, visible int, maxW
 }
 
 func (m *Model) renderPreview(width int) string {
-	if m.browserCursor >= len(m.browserItems) {
-		return dimStyle.Render("No item selected")
-	}
-
-	item := m.browserItems[m.browserCursor].Item
-
 	var sb strings.Builder
 
-	// Header: name and type badge
-	sb.WriteString(previewHeaderStyle.Render(item.Name))
-	sb.WriteString(" ")
+	// Sidebar title
+	sb.WriteString(sidebarTitleStyle.Render("Preview"))
+	sb.WriteString("\n\n")
 
-	switch item.Type {
+	if m.browserCursor >= len(m.browserItems) {
+		sb.WriteString(dimStyle.Render("No item selected"))
+
+		return sb.String()
+	}
+
+	bi := m.browserItems[m.browserCursor]
+	item := bi.Item
+
+	// Item name and metadata
+	sb.WriteString(previewHeaderStyle.Render(item.Name))
+	sb.WriteString("\n")
+
+	m.renderPreviewMetadata(&sb, bi)
+	m.renderPreviewContent(&sb, item, width)
+
+	return sb.String()
+}
+
+func (m *Model) renderPreviewMetadata(sb *strings.Builder, bi BrowserItem) {
+	bullet := bulletStyle.Render(SymbolBullet) + " "
+
+	// Type
+	sb.WriteString(bullet)
+	sb.WriteString(dimStyle.Render("type: "))
+
+	switch bi.Item.Type {
 	case registry.ItemTypeAgent:
-		sb.WriteString(badgeAgentStyle.Render("agent"))
+		sb.WriteString(accentStyle.Render("agent"))
 	case registry.ItemTypeSkill:
-		sb.WriteString(badgeSkillStyle.Render("skill"))
+		sb.WriteString(modifiedStyle.Render("skill"))
 	}
 
 	sb.WriteString("\n")
 
-	// Divider line
-	dividerLen := min(width-previewPadding, previewDividerLen)
-	if dividerLen > 0 {
-		sb.WriteString(previewDividerStyle.Render(strings.Repeat("─", dividerLen)))
-		sb.WriteString("\n\n")
-	}
+	// Status
+	sb.WriteString(bullet)
+	sb.WriteString(dimStyle.Render("status: "))
+	sb.WriteString(getStatusLabel(bi.Status))
+	sb.WriteString("\n\n")
+}
 
-	// Description
+func getStatusLabel(status installer.ItemState) string {
+	switch status {
+	case installer.StateNotInstalled:
+		return dimStyle.Render("not installed")
+	case installer.StateUpToDate:
+		return installedStyle.Render("installed")
+	case installer.StateUpdateAvailable:
+		return updateStyle.Render("update available")
+	case installer.StateModified:
+		return modifiedStyle.Render("modified locally")
+	case installer.StateModifiedWithUpdate:
+		return updateStyle.Render("modified + update")
+	default:
+		return dimStyle.Render("unknown")
+	}
+}
+
+func (m *Model) renderPreviewContent(sb *strings.Builder, item registry.Item, width int) {
+	divider := previewDividerStyle.Render(strings.Repeat("-", min(width, previewDividerLen)))
+
+	// Description section
 	if item.Description != "" {
-		desc := wrapText(item.Description, width-previewPadding)
+		sb.WriteString(sectionHeaderStyle.Render("Description"))
+		sb.WriteString("\n")
+		sb.WriteString(divider)
+		sb.WriteString("\n")
+
+		desc := wrapText(item.Description, width)
 		sb.WriteString(normalStyle.Render(desc))
 		sb.WriteString("\n\n")
 	}
 
-	// Body content (truncated)
+	// Content section (body)
 	if item.Body != "" {
-		body := wrapText(item.Body, width-previewPadding)
-		// Limit to reasonable number of lines
-		lines := strings.Split(body, "\n")
-		maxLines := previewMaxLines
+		sb.WriteString(sectionHeaderStyle.Render("Content"))
+		sb.WriteString("\n")
+		sb.WriteString(divider)
+		sb.WriteString("\n")
 
-		if len(lines) > maxLines {
-			lines = lines[:maxLines]
+		body := wrapText(item.Body, width)
+		lines := strings.Split(body, "\n")
+
+		if len(lines) > previewMaxLines {
+			lines = lines[:previewMaxLines]
 			lines = append(lines, dimStyle.Render("..."))
 		}
 
 		sb.WriteString(previewBodyStyle.Render(strings.Join(lines, "\n")))
 	}
-
-	return sb.String()
 }
 
 // wrapText wraps text to the specified width.
@@ -842,7 +890,7 @@ func (m *Model) renderItem(sb *strings.Builder, idx int, showDesc bool, maxWidth
 	// Show description only if requested and there's space
 	if showDesc {
 		desc := bi.Item.Description
-		maxDescLen := maxWidth - nameWidth - descPrefixWidth // Approximate space for prefix
+		maxDescLen := maxWidth - nameWidth - itemPrefixWidth - descPaddingExtra
 
 		if maxDescLen > 10 && len(desc) > 0 {
 			if len(desc) > maxDescLen {
