@@ -139,17 +139,17 @@ func (m *Model) Init() tea.Cmd {
 
 // Update handles messages.
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	var cmds []tea.Cmd
-
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.handleWindowSize(msg)
 
 	case tea.KeyMsg:
-		m.handleKeyMsg(msg)
+		if cmd := m.handleKeyMsg(msg); cmd != nil {
+			return m, cmd
+		}
 	}
 
-	return m, tea.Batch(cmds...)
+	return m, nil
 }
 
 // View renders the UI.
@@ -221,13 +221,13 @@ func (m *Model) handleWindowSize(msg tea.WindowSizeMsg) {
 	m.updatePreview()
 }
 
-func (m *Model) handleKeyMsg(msg tea.KeyMsg) {
+func (m *Model) handleKeyMsg(msg tea.KeyMsg) tea.Cmd {
 	// Clear message on any key press
 	m.message = ""
 
 	switch {
 	case key.Matches(msg, m.keys.Quit):
-		// Quit is handled in Update
+		return tea.Quit
 
 	case key.Matches(msg, m.keys.Help):
 		m.showHelp = !m.showHelp
@@ -253,6 +253,8 @@ func (m *Model) handleKeyMsg(msg tea.KeyMsg) {
 	case key.Matches(msg, m.keys.Global):
 		m.installCurrent(config.ScopeGlobal)
 	}
+
+	return nil
 }
 
 func (m *Model) toggleFocus() {
