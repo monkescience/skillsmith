@@ -283,15 +283,22 @@ func (m *Model) viewToolSelect() string {
 			}
 		}
 
+		// Count installed items per scope
+		localInstalled := m.countInstalledForTool(tool, config.ScopeLocal)
+		globalInstalled := m.countInstalledForTool(tool, config.ScopeGlobal)
+
 		line := fmt.Sprintf("%s%s", cursor, tool)
 		stats := dimStyle.Render(fmt.Sprintf("  %d agents, %d skills", agents, skills))
+		installed := dimStyle.Render(fmt.Sprintf("  (%d local, %d global)", localInstalled, globalInstalled))
 
 		if i == m.toolCursor {
 			content.WriteString(selectedStyle.Render(line))
 			content.WriteString(stats)
+			content.WriteString(installed)
 		} else {
 			content.WriteString(normalStyle.Render(line))
 			content.WriteString(stats)
+			content.WriteString(installed)
 		}
 
 		content.WriteString("\n")
@@ -401,11 +408,15 @@ func (m *Model) getGlobalPath() string {
 }
 
 func (m *Model) countInstalled(scope config.Scope) int {
+	return m.countInstalledForTool(m.selectedTool, scope)
+}
+
+func (m *Model) countInstalledForTool(tool registry.Tool, scope config.Scope) int {
 	count := 0
-	items := m.registry.ByTool(m.selectedTool)
+	items := m.registry.ByTool(tool)
 
 	for _, item := range items {
-		installed, _, _ := installer.IsInstalled(item, m.selectedTool, scope)
+		installed, _, _ := installer.IsInstalled(item, tool, scope)
 		if installed {
 			count++
 		}
