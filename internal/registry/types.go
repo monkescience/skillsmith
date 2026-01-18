@@ -1,12 +1,19 @@
 package registry
 
+import "slices"
+
 // Tool represents a supported AI coding tool.
 type Tool string
 
 const (
-	ToolOpenCode   Tool = "opencode"
-	ToolClaudeCode Tool = "claude"
+	ToolOpenCode Tool = "opencode"
+	ToolClaude   Tool = "claude"
 )
+
+// AllTools returns all supported tools.
+func AllTools() []Tool {
+	return []Tool{ToolOpenCode, ToolClaude}
+}
 
 // ItemType represents the type of registry item.
 type ItemType string
@@ -15,6 +22,14 @@ const (
 	ItemTypeAgent ItemType = "agent"
 	ItemTypeSkill ItemType = "skill"
 )
+
+// ToolConfig contains tool-specific settings for an item.
+type ToolConfig struct {
+	// Enabled tools (map of tool name to enabled state).
+	Write *bool `yaml:"write,omitempty"`
+	Edit  *bool `yaml:"edit,omitempty"`
+	Bash  *bool `yaml:"bash,omitempty"`
+}
 
 // Item represents a single installable item (agent or skill).
 type Item struct {
@@ -25,19 +40,16 @@ type Item struct {
 	Description string `yaml:"description"`
 
 	// Type indicates whether this is an agent or skill.
-	Type ItemType `yaml:"type"`
-
-	// Tool indicates which AI tool this item is for.
-	Tool Tool `yaml:"tool"`
-
-	// Content is the full content to be installed (markdown file content).
-	Content string `yaml:"content"`
-
-	// Filename is the target filename when installed.
-	Filename string `yaml:"filename"`
+	Type ItemType `yaml:"-"` // Derived from directory, not from frontmatter
 
 	// Category for grouping in the UI (e.g., "code-quality", "documentation").
 	Category string `yaml:"category"`
+
+	// Compatibility lists which tools this item works with.
+	Compatibility []Tool `yaml:"compatibility"`
+
+	// Tools configuration (which tools are enabled/disabled).
+	Tools ToolConfig `yaml:"tools,omitempty"`
 
 	// Tags for filtering.
 	Tags []string `yaml:"tags,omitempty"`
@@ -47,24 +59,22 @@ type Item struct {
 
 	// License for this item.
 	License string `yaml:"license,omitempty"`
+
+	// Body is the content after frontmatter (the actual prompt/instructions).
+	Body string `yaml:"-"`
+
+	// SourcePath is the path to the source file (for debugging).
+	SourcePath string `yaml:"-"`
 }
 
-// Registry holds all available items organized by tool.
+// IsCompatibleWith checks if the item is compatible with a given tool.
+func (i *Item) IsCompatibleWith(tool Tool) bool {
+	return slices.Contains(i.Compatibility, tool)
+}
+
+// Registry holds all available items.
 type Registry struct {
-	Items []Item `yaml:"items"`
-}
-
-// ByTool returns items filtered by the specified tool.
-func (r *Registry) ByTool(tool Tool) []Item {
-	var result []Item
-
-	for _, item := range r.Items {
-		if item.Tool == tool {
-			result = append(result, item)
-		}
-	}
-
-	return result
+	Items []Item
 }
 
 // ByType returns items filtered by the specified type.
@@ -80,12 +90,12 @@ func (r *Registry) ByType(itemType ItemType) []Item {
 	return result
 }
 
-// ByToolAndType returns items filtered by both tool and type.
-func (r *Registry) ByToolAndType(tool Tool, itemType ItemType) []Item {
+// ByTool returns items compatible with the specified tool.
+func (r *Registry) ByTool(tool Tool) []Item {
 	var result []Item
 
 	for _, item := range r.Items {
-		if item.Tool == tool && item.Type == itemType {
+		if item.IsCompatibleWith(tool) {
 			result = append(result, item)
 		}
 	}
@@ -93,18 +103,52 @@ func (r *Registry) ByToolAndType(tool Tool, itemType ItemType) []Item {
 	return result
 }
 
-// GetTools returns all unique tools in the registry.
+// ByToolAndType returns items compatible with a tool and matching a type.
+func (r *Registry) ByToolAndType(tool Tool, itemType ItemType) []Item {
+	var result []Item
+
+	for _, item := range r.Items {
+		if item.Type == itemType && item.IsCompatibleWith(tool) {
+			result = append(result, item)
+		}
+	}
+
+	return result
+}
+
+// GetTools returns all tools that have at least one compatible item.
 func (r *Registry) GetTools() []Tool {
 	seen := make(map[Tool]bool)
 
+	for _, item := range r.Items {
+		for _, tool := range item.Compatibility {
+			seen[tool] = true
+		}
+	}
+
 	var tools []Tool
 
-	for _, item := range r.Items {
-		if !seen[item.Tool] {
-			seen[item.Tool] = true
-			tools = append(tools, item.Tool)
+	for _, tool := range AllTools() {
+		if seen[tool] {
+			tools = append(tools, tool)
 		}
 	}
 
 	return tools
+}
+
+// GetCategories returns all unique categories.
+func (r *Registry) GetCategories() []string {
+	seen := make(map[string]bool)
+
+	var categories []string
+
+	for _, item := range r.Items {
+		if item.Category != "" && !seen[item.Category] {
+			seen[item.Category] = true
+			categories = append(categories, item.Category)
+		}
+	}
+
+	return categories
 }

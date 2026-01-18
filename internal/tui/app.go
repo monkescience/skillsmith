@@ -16,19 +16,18 @@ import (
 
 // KeyMap defines the keybindings for the app.
 type KeyMap struct {
-	Up       key.Binding
-	Down     key.Binding
-	Left     key.Binding
-	Right    key.Binding
-	Enter    key.Binding
-	Local    key.Binding
-	Global   key.Binding
-	Toggle   key.Binding
-	Search   key.Binding
-	Help     key.Binding
-	Quit     key.Binding
-	Tab      key.Binding
-	ShiftTab key.Binding
+	Up     key.Binding
+	Down   key.Binding
+	Left   key.Binding
+	Right  key.Binding
+	Enter  key.Binding
+	One    key.Binding
+	Two    key.Binding
+	Global key.Binding
+	Toggle key.Binding
+	Help   key.Binding
+	Quit   key.Binding
+	Tab    key.Binding
 }
 
 var defaultKeyMap = KeyMap{
@@ -52,21 +51,21 @@ var defaultKeyMap = KeyMap{
 		key.WithKeys("enter"),
 		key.WithHelp("enter", "install"),
 	),
-	Local: key.NewBinding(
-		key.WithKeys("l"),
-		key.WithHelp("l", "install local"),
+	One: key.NewBinding(
+		key.WithKeys("1"),
+		key.WithHelp("1", "install opencode"),
+	),
+	Two: key.NewBinding(
+		key.WithKeys("2"),
+		key.WithHelp("2", "install claude"),
 	),
 	Global: key.NewBinding(
 		key.WithKeys("g"),
-		key.WithHelp("g", "install global"),
+		key.WithHelp("g", "toggle global"),
 	),
 	Toggle: key.NewBinding(
 		key.WithKeys(" "),
 		key.WithHelp("space", "toggle"),
-	),
-	Search: key.NewBinding(
-		key.WithKeys("/"),
-		key.WithHelp("/", "search"),
 	),
 	Help: key.NewBinding(
 		key.WithKeys("?"),
@@ -79,10 +78,6 @@ var defaultKeyMap = KeyMap{
 	Tab: key.NewBinding(
 		key.WithKeys("tab"),
 		key.WithHelp("tab", "next pane"),
-	),
-	ShiftTab: key.NewBinding(
-		key.WithKeys("shift+tab"),
-		key.WithHelp("shift+tab", "prev pane"),
 	),
 }
 
@@ -118,14 +113,16 @@ type Model struct {
 	messageStyle lipgloss.Style
 	showHelp     bool
 	ready        bool
+	globalScope  bool // toggle for global vs local install
 }
 
 // NewModel creates a new Model.
 func NewModel(reg *registry.Registry) *Model {
 	m := &Model{
-		registry: reg,
-		keys:     defaultKeyMap,
-		focus:    FocusList,
+		registry:    reg,
+		keys:        defaultKeyMap,
+		focus:       FocusList,
+		globalScope: false,
 	}
 	m.buildTree()
 
@@ -169,6 +166,13 @@ func (m *Model) View() string {
 	// Render header
 	header := titleStyle.Render("skillsmith")
 	header += "  " + subtitleStyle.Render("Install agents & skills for AI coding tools")
+
+	scopeIndicator := " [local]"
+	if m.globalScope {
+		scopeIndicator = " [GLOBAL]"
+	}
+
+	header += helpStyle.Render(scopeIndicator)
 
 	// Render list
 	listContent := m.renderList(listWidth - borderMargin)
@@ -247,11 +251,19 @@ func (m *Model) handleKeyMsg(msg tea.KeyMsg) tea.Cmd {
 	case key.Matches(msg, m.keys.Right), key.Matches(msg, m.keys.Toggle):
 		m.handleRight()
 
-	case key.Matches(msg, m.keys.Enter):
-		m.installCurrent(config.ScopeLocal)
-
 	case key.Matches(msg, m.keys.Global):
-		m.installCurrent(config.ScopeGlobal)
+		m.globalScope = !m.globalScope
+		m.updatePreview()
+
+	case key.Matches(msg, m.keys.One):
+		m.installForTool(registry.ToolOpenCode)
+
+	case key.Matches(msg, m.keys.Two):
+		m.installForTool(registry.ToolClaude)
+
+	case key.Matches(msg, m.keys.Enter):
+		// Install for first compatible tool
+		m.installForFirstCompatibleTool()
 	}
 
 	return nil
@@ -314,65 +326,49 @@ func (m *Model) handleRight() {
 }
 
 // buildTree constructs the tree structure from the registry.
+// Groups by type (Agents, Skills) instead of by tool.
 func (m *Model) buildTree() {
-	toolNodes := make(map[registry.Tool]*TreeNode)
-
-	// Create tool nodes
-	for _, tool := range m.registry.GetTools() {
-		toolNode := &TreeNode{
-			Name:     string(tool),
-			Expanded: true,
-			Level:    0,
-		}
-		toolNodes[tool] = toolNode
-		m.tree = append(m.tree, toolNode)
+	// Create type nodes
+	agentsNode := &TreeNode{
+		Name:     "Agents",
+		Expanded: true,
+		Level:    0,
 	}
 
-	// Group items by tool and type
-	for _, tool := range m.registry.GetTools() {
-		toolNode := toolNodes[tool]
+	skillsNode := &TreeNode{
+		Name:     "Skills",
+		Expanded: true,
+		Level:    0,
+	}
 
-		// Create type groups
-		agents := m.registry.ByToolAndType(tool, registry.ItemTypeAgent)
-		skills := m.registry.ByToolAndType(tool, registry.ItemTypeSkill)
+	// Add agents
+	agents := m.registry.ByType(registry.ItemTypeAgent)
+	for i := range agents {
+		item := agents[i]
+		agentsNode.Children = append(agentsNode.Children, &TreeNode{
+			Name:  item.Name,
+			Item:  &item,
+			Level: 1,
+		})
+	}
 
-		if len(agents) > 0 {
-			agentNode := &TreeNode{
-				Name:     "Agents",
-				Expanded: true,
-				Level:    1,
-			}
+	// Add skills
+	skills := m.registry.ByType(registry.ItemTypeSkill)
+	for i := range skills {
+		item := skills[i]
+		skillsNode.Children = append(skillsNode.Children, &TreeNode{
+			Name:  item.Name,
+			Item:  &item,
+			Level: 1,
+		})
+	}
 
-			for i := range agents {
-				item := agents[i]
-				agentNode.Children = append(agentNode.Children, &TreeNode{
-					Name:  item.Name,
-					Item:  &item,
-					Level: itemLevel,
-				})
-			}
+	if len(agentsNode.Children) > 0 {
+		m.tree = append(m.tree, agentsNode)
+	}
 
-			toolNode.Children = append(toolNode.Children, agentNode)
-		}
-
-		if len(skills) > 0 {
-			skillNode := &TreeNode{
-				Name:     "Skills",
-				Expanded: true,
-				Level:    1,
-			}
-
-			for i := range skills {
-				item := skills[i]
-				skillNode.Children = append(skillNode.Children, &TreeNode{
-					Name:  item.Name,
-					Item:  &item,
-					Level: itemLevel,
-				})
-			}
-
-			toolNode.Children = append(toolNode.Children, skillNode)
-		}
+	if len(skillsNode.Children) > 0 {
+		m.tree = append(m.tree, skillsNode)
 	}
 
 	m.updateFlatList()
@@ -397,8 +393,8 @@ func (m *Model) updateFlatList() {
 	flatten(m.tree)
 }
 
-// installCurrent installs the currently selected item.
-func (m *Model) installCurrent(scope config.Scope) {
+// installForTool installs the currently selected item for a specific tool.
+func (m *Model) installForTool(tool registry.Tool) {
 	if m.cursor >= len(m.flatList) {
 		return
 	}
@@ -411,7 +407,19 @@ func (m *Model) installCurrent(scope config.Scope) {
 		return
 	}
 
-	result, err := installer.Install(*node.Item, scope, false)
+	if !node.Item.IsCompatibleWith(tool) {
+		m.message = fmt.Sprintf("%s is not compatible with %s", node.Item.Name, tool)
+		m.messageStyle = warningStyle
+
+		return
+	}
+
+	scope := config.ScopeLocal
+	if m.globalScope {
+		scope = config.ScopeGlobal
+	}
+
+	result, err := installer.Install(*node.Item, tool, scope, false)
 	if err != nil {
 		m.message = fmt.Sprintf("Error: %v", err)
 		m.messageStyle = errorStyle
@@ -421,16 +429,42 @@ func (m *Model) installCurrent(scope config.Scope) {
 
 	if result.Success {
 		scopeStr := "locally"
-		if scope == config.ScopeGlobal {
+		if m.globalScope {
 			scopeStr = "globally"
 		}
 
-		m.message = fmt.Sprintf("Installed %s %s", node.Item.Name, scopeStr)
+		m.message = fmt.Sprintf("Installed %s for %s %s", node.Item.Name, tool, scopeStr)
 		m.messageStyle = successStyle
 	} else {
 		m.message = fmt.Sprintf("%s: %s", node.Item.Name, result.Message)
 		m.messageStyle = warningStyle
 	}
+
+	m.updatePreview()
+}
+
+// installForFirstCompatibleTool installs for the first compatible tool.
+func (m *Model) installForFirstCompatibleTool() {
+	if m.cursor >= len(m.flatList) {
+		return
+	}
+
+	node := m.flatList[m.cursor]
+	if node.Item == nil {
+		m.message = "Select an item to install"
+		m.messageStyle = warningStyle
+
+		return
+	}
+
+	if len(node.Item.Compatibility) == 0 {
+		m.message = "No compatible tools for this item"
+		m.messageStyle = warningStyle
+
+		return
+	}
+
+	m.installForTool(node.Item.Compatibility[0])
 }
 
 // updatePreview updates the preview viewport content.
@@ -468,6 +502,21 @@ func (m *Model) renderCategoryPreview(node *TreeNode) string {
 func (m *Model) renderItemPreview(item *registry.Item) string {
 	var sb strings.Builder
 
+	m.writeItemHeader(&sb, item)
+	m.writeItemCompatibility(&sb, item)
+	m.writeItemTags(&sb, item)
+	m.writeItemInstallStatus(&sb, item)
+
+	// Content preview
+	sb.WriteString("\n")
+	sb.WriteString(categoryStyle.Render("Content:"))
+	sb.WriteString("\n")
+	sb.WriteString(item.Body)
+
+	return sb.String()
+}
+
+func (m *Model) writeItemHeader(sb *strings.Builder, item *registry.Item) {
 	// Title
 	title := previewTitleStyle.Render(fmt.Sprintf("%s %s", TypeIcon(string(item.Type)), item.Name))
 	sb.WriteString(title)
@@ -478,51 +527,72 @@ func (m *Model) renderItemPreview(item *registry.Item) string {
 	sb.WriteString("\n\n")
 
 	// Metadata
-	sb.WriteString(fmt.Sprintf("Type: %s\n", item.Type))
-	sb.WriteString(fmt.Sprintf("Tool: %s\n", item.Tool))
+	fmt.Fprintf(sb, "Type: %s\n", item.Type)
 
 	if item.Category != "" {
-		sb.WriteString(fmt.Sprintf("Category: %s\n", item.Category))
+		fmt.Fprintf(sb, "Category: %s\n", item.Category)
 	}
 
 	if item.Author != "" {
-		sb.WriteString(fmt.Sprintf("Author: %s\n", item.Author))
+		fmt.Fprintf(sb, "Author: %s\n", item.Author)
+	}
+}
+
+func (m *Model) writeItemCompatibility(sb *strings.Builder, item *registry.Item) {
+	sb.WriteString("\n")
+	sb.WriteString(categoryStyle.Render("Compatible with:"))
+	sb.WriteString("\n")
+
+	for i, tool := range item.Compatibility {
+		marker := fmt.Sprintf("  [%d] %s", i+1, tool)
+		sb.WriteString(marker)
+		sb.WriteString("\n")
+	}
+}
+
+func (m *Model) writeItemTags(sb *strings.Builder, item *registry.Item) {
+	if len(item.Tags) == 0 {
+		return
 	}
 
-	// Tags
-	if len(item.Tags) > 0 {
-		sb.WriteString("\nTags: ")
+	sb.WriteString("\nTags: ")
 
-		for _, tag := range item.Tags {
-			sb.WriteString(tagStyle.Render(tag))
+	for _, tag := range item.Tags {
+		sb.WriteString(tagStyle.Render(tag))
+	}
+
+	sb.WriteString("\n")
+}
+
+func (m *Model) writeItemInstallStatus(sb *strings.Builder, item *registry.Item) {
+	sb.WriteString("\n")
+	sb.WriteString(categoryStyle.Render("Install status:"))
+	sb.WriteString("\n")
+
+	scopeLabel := "local"
+	if m.globalScope {
+		scopeLabel = "global"
+	}
+
+	for _, tool := range item.Compatibility {
+		status, err := installer.GetInstallStatus(*item, tool)
+		if err != nil {
+			continue
+		}
+
+		installed := status.LocalInstalled
+		if m.globalScope {
+			installed = status.GlobalInstalled
+		}
+
+		if installed {
+			sb.WriteString(successStyle.Render(fmt.Sprintf("  %s (%s): installed", tool, scopeLabel)))
+		} else {
+			sb.WriteString(helpStyle.Render(fmt.Sprintf("  %s (%s): not installed", tool, scopeLabel)))
 		}
 
 		sb.WriteString("\n")
 	}
-
-	// Install status
-	status, err := installer.GetInstallStatus(*item)
-	if err == nil {
-		sb.WriteString("\n")
-
-		if status.LocalInstalled {
-			sb.WriteString(successStyle.Render("Installed locally"))
-			sb.WriteString("\n")
-		}
-
-		if status.GlobalInstalled {
-			sb.WriteString(successStyle.Render("Installed globally"))
-			sb.WriteString("\n")
-		}
-	}
-
-	// Content preview
-	sb.WriteString("\n")
-	sb.WriteString(categoryStyle.Render("Content:"))
-	sb.WriteString("\n")
-	sb.WriteString(item.Content)
-
-	return sb.String()
 }
 
 // renderList renders the tree list.
@@ -599,7 +669,7 @@ func (m *Model) renderStatusBar() string {
 	if m.message != "" {
 		left = m.messageStyle.Render(m.message)
 	} else {
-		left = helpStyle.Render("enter: install local | g: install global | ?: help | q: quit")
+		left = helpStyle.Render("1: opencode | 2: claude | g: toggle scope | ?: help | q: quit")
 	}
 
 	right := helpStyle.Render(fmt.Sprintf("%d/%d", m.cursor+1, len(m.flatList)))
@@ -626,10 +696,11 @@ func (m *Model) renderHelp() string {
 		{"←/h", "Collapse folder"},
 		{"→/l", "Expand folder"},
 		{"space", "Toggle expand/collapse"},
-		{"enter", "Install to local project"},
-		{"g", "Install globally"},
+		{"1", "Install for OpenCode"},
+		{"2", "Install for Claude"},
+		{"enter", "Install for first compatible tool"},
+		{"g", "Toggle global/local scope"},
 		{"tab", "Switch pane focus"},
-		{"/", "Search (coming soon)"},
 		{"?", "Toggle help"},
 		{"q", "Quit"},
 	}

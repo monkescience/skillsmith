@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
@@ -93,29 +94,44 @@ func runList(_ *cobra.Command, _ []string) error {
 func writeListOutput(w io.Writer, reg *registry.Registry) {
 	mustWrite(w, "Available agents and skills:\n\n")
 
-	for _, tool := range reg.GetTools() {
-		mustWrite(w, "  "+string(tool)+":\n")
+	// List agents
+	agents := reg.ByType(registry.ItemTypeAgent)
+	if len(agents) > 0 {
+		mustWrite(w, "  Agents:\n")
 
-		agents := reg.ByToolAndType(tool, registry.ItemTypeAgent)
-		if len(agents) > 0 {
-			mustWrite(w, "    Agents:\n")
-
-			for _, agent := range agents {
-				mustWrite(w, "      - "+agent.Name+": "+agent.Description+"\n")
-			}
-		}
-
-		skills := reg.ByToolAndType(tool, registry.ItemTypeSkill)
-		if len(skills) > 0 {
-			mustWrite(w, "    Skills:\n")
-
-			for _, skill := range skills {
-				mustWrite(w, "      - "+skill.Name+": "+skill.Description+"\n")
-			}
+		for _, agent := range agents {
+			compat := formatCompatibility(agent.Compatibility)
+			mustWrite(w, "    - "+agent.Name+": "+agent.Description+" "+compat+"\n")
 		}
 
 		mustWrite(w, "\n")
 	}
+
+	// List skills
+	skills := reg.ByType(registry.ItemTypeSkill)
+	if len(skills) > 0 {
+		mustWrite(w, "  Skills:\n")
+
+		for _, skill := range skills {
+			compat := formatCompatibility(skill.Compatibility)
+			mustWrite(w, "    - "+skill.Name+": "+skill.Description+" "+compat+"\n")
+		}
+
+		mustWrite(w, "\n")
+	}
+}
+
+func formatCompatibility(tools []registry.Tool) string {
+	if len(tools) == 0 {
+		return ""
+	}
+
+	names := make([]string, len(tools))
+	for i, t := range tools {
+		names[i] = string(t)
+	}
+
+	return "[" + strings.Join(names, ", ") + "]"
 }
 
 func mustWrite(w io.Writer, s string) {

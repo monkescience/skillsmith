@@ -55,7 +55,7 @@ func GetPaths(tool registry.Tool) (*Paths, error) {
 			SkillsSubdir: "skills",
 		}, nil
 
-	case registry.ToolClaudeCode:
+	case registry.ToolClaude:
 		return &Paths{
 			LocalDir:     filepath.Join(cwd, ".claude"),
 			GlobalDir:    filepath.Join(homeDir, ".claude"),
@@ -73,9 +73,9 @@ func GetPaths(tool registry.Tool) (*Paths, error) {
 	}
 }
 
-// GetInstallPath returns the full path where an item should be installed.
-func GetInstallPath(item registry.Item, scope Scope) (string, error) {
-	paths, err := GetPaths(item.Tool)
+// GetInstallPath returns the full path where an item should be installed for a specific tool.
+func GetInstallPath(item registry.Item, tool registry.Tool, scope Scope) (string, error) {
+	paths, err := GetPaths(tool)
 	if err != nil {
 		return "", err
 	}
@@ -87,14 +87,18 @@ func GetInstallPath(item registry.Item, scope Scope) (string, error) {
 		baseDir = paths.LocalDir
 	}
 
+	filename := item.Name + ".md"
+
 	switch item.Type {
 	case registry.ItemTypeAgent:
 		if paths.AgentsSubdir == "" {
-			// For tools without agent subdirs, install directly
-			return filepath.Join(baseDir, item.Filename), nil
+			// For tools without agent subdirs (like Claude), use skills instead
+			skillDir := filepath.Join(baseDir, paths.SkillsSubdir, item.Name)
+
+			return filepath.Join(skillDir, "SKILL.md"), nil
 		}
 
-		return filepath.Join(baseDir, paths.AgentsSubdir, item.Filename), nil
+		return filepath.Join(baseDir, paths.AgentsSubdir, filename), nil
 
 	case registry.ItemTypeSkill:
 		// Skills go in skills/<name>/SKILL.md
@@ -103,7 +107,7 @@ func GetInstallPath(item registry.Item, scope Scope) (string, error) {
 		return filepath.Join(skillDir, "SKILL.md"), nil
 
 	default:
-		return filepath.Join(baseDir, item.Filename), nil
+		return filepath.Join(baseDir, filename), nil
 	}
 }
 
