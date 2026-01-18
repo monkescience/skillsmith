@@ -108,6 +108,7 @@ type Model struct {
 	// Browser state
 	browserItems  []BrowserItem
 	browserCursor int
+	browserOffset int  // scroll offset for visible window
 	showAll       bool // false = only compatible, true = all
 
 	// Action menu state
@@ -377,6 +378,7 @@ func (m *Model) getScopeLabel() string {
 
 func (m *Model) loadBrowserItems() {
 	m.browserItems = nil
+	m.browserOffset = 0
 
 	items := m.registry.ByTool(m.selectedTool)
 
@@ -395,10 +397,12 @@ func (m *Model) updateBrowser(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, keys.Up):
 		if m.browserCursor > 0 {
 			m.browserCursor--
+			m.ensureCursorVisible()
 		}
 	case key.Matches(msg, keys.Down):
 		if m.browserCursor < len(m.browserItems)-1 {
 			m.browserCursor++
+			m.ensureCursorVisible()
 		}
 	case key.Matches(msg, keys.Space):
 		if m.browserCursor < len(m.browserItems) {
@@ -423,6 +427,37 @@ func (m *Model) updateBrowser(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// visibleItemCount returns how many items can fit in the visible area.
+func (m *Model) visibleItemCount() int {
+	// Reserve lines for: header(2) + section headers(2) + status(1) + path(1) + help(2) + box borders(2) + padding(2)
+	// Total overhead ~12 lines
+	overhead := 12
+	available := m.height - overhead
+
+	return max(available, minVisibleItems)
+}
+
+// ensureCursorVisible adjusts browserOffset to keep cursor in view.
+func (m *Model) ensureCursorVisible() {
+	visible := m.visibleItemCount()
+
+	// Cursor above visible area
+	if m.browserCursor < m.browserOffset {
+		m.browserOffset = m.browserCursor
+	}
+
+	// Cursor below visible area
+	if m.browserCursor >= m.browserOffset+visible {
+		m.browserOffset = m.browserCursor - visible + 1
+	}
+
+	// Clamp offset
+	maxOffset := max(len(m.browserItems)-visible, 0)
+
+	m.browserOffset = min(m.browserOffset, maxOffset)
+	m.browserOffset = max(m.browserOffset, 0)
+}
+
 func (m *Model) viewBrowser() string {
 	var sb strings.Builder
 
@@ -434,21 +469,19 @@ func (m *Model) viewBrowser() string {
 	sb.WriteString(normalStyle.Render(m.getScopeLabel()))
 	sb.WriteString("\n\n")
 
-	// Group by type
-	agents := m.filterByType(registry.ItemTypeAgent)
-	skills := m.filterByType(registry.ItemTypeSkill)
+	// Calculate visible range
+	visible := m.visibleItemCount()
+	totalItems := len(m.browserItems)
 
-	if len(agents) > 0 {
-		sb.WriteString(headerStyle.Render("Agents:"))
-		sb.WriteString("\n")
-		m.renderItems(&sb, agents)
-		sb.WriteString("\n")
-	}
+	// Render visible items with scroll indicator
+	m.renderVisibleItems(&sb, visible)
 
-	if len(skills) > 0 {
-		sb.WriteString(headerStyle.Render("Skills:"))
+	// Scroll indicator
+	if totalItems > visible {
+		end := min(m.browserOffset+visible, totalItems)
+		scrollInfo := fmt.Sprintf("[%d-%d of %d]", m.browserOffset+1, end, totalItems)
+		sb.WriteString(dimStyle.Render(scrollInfo))
 		sb.WriteString("\n")
-		m.renderItems(&sb, skills)
 	}
 
 	// Status line
@@ -478,66 +511,85 @@ func (m *Model) viewBrowser() string {
 	return boxStyle.Width(m.width - boxPadding).Render(sb.String())
 }
 
-func (m *Model) filterByType(itemType registry.ItemType) []int {
-	var indices []int
+func (m *Model) renderVisibleItems(sb *strings.Builder, visible int) {
+	// Determine which items are visible
+	start := m.browserOffset
+	end := min(start+visible, len(m.browserItems))
 
-	for i, bi := range m.browserItems {
-		if bi.Item.Type == itemType {
-			indices = append(indices, i)
+	// Track section transitions
+	lastType := registry.ItemType("")
+
+	for i := start; i < end; i++ {
+		bi := m.browserItems[i]
+
+		// Render section header on type change
+		if bi.Item.Type != lastType {
+			if lastType != "" {
+				sb.WriteString("\n")
+			}
+
+			switch bi.Item.Type {
+			case registry.ItemTypeAgent:
+				sb.WriteString(headerStyle.Render("Agents:"))
+			case registry.ItemTypeSkill:
+				sb.WriteString(headerStyle.Render("Skills:"))
+			}
+
+			sb.WriteString("\n")
+
+			lastType = bi.Item.Type
 		}
-	}
 
-	return indices
+		m.renderItem(sb, i)
+	}
 }
 
-func (m *Model) renderItems(sb *strings.Builder, indices []int) {
-	for _, idx := range indices {
-		bi := m.browserItems[idx]
+func (m *Model) renderItem(sb *strings.Builder, idx int) {
+	bi := m.browserItems[idx]
 
-		// Selection checkbox
-		checkbox := SymbolUnselected
-		if bi.Selected {
-			checkbox = SymbolSelected
-		}
-
-		// Installed indicator
-		installed := " "
-		if bi.Installed {
-			installed = SymbolInstalled
-		}
-
-		// Cursor
-		cursor := "  "
-		if idx == m.browserCursor {
-			cursor = SymbolCursor + " "
-		}
-
-		// Build line
-		name := bi.Item.Name
-		desc := bi.Item.Description
-
-		// Truncate description
-		maxDescLen := m.width - descPaddingWidth
-		if maxDescLen > 0 && len(desc) > maxDescLen {
-			desc = desc[:maxDescLen-3] + "..."
-		}
-
-		line := fmt.Sprintf("%s%s %s %-20s", cursor, checkbox, installed, name)
-		descPart := dimStyle.Render(desc)
-
-		switch {
-		case idx == m.browserCursor:
-			sb.WriteString(selectedStyle.Render(line))
-		case bi.Installed:
-			sb.WriteString(installedStyle.Render(line))
-		default:
-			sb.WriteString(normalStyle.Render(line))
-		}
-
-		sb.WriteString(" ")
-		sb.WriteString(descPart)
-		sb.WriteString("\n")
+	// Selection checkbox
+	checkbox := SymbolUnselected
+	if bi.Selected {
+		checkbox = SymbolSelected
 	}
+
+	// Installed indicator
+	installed := " "
+	if bi.Installed {
+		installed = SymbolInstalled
+	}
+
+	// Cursor
+	cursor := "  "
+	if idx == m.browserCursor {
+		cursor = SymbolCursor + " "
+	}
+
+	// Build line
+	name := bi.Item.Name
+	desc := bi.Item.Description
+
+	// Truncate description
+	maxDescLen := m.width - descPaddingWidth
+	if maxDescLen > 0 && len(desc) > maxDescLen {
+		desc = desc[:maxDescLen-3] + "..."
+	}
+
+	line := fmt.Sprintf("%s%s %s %-20s", cursor, checkbox, installed, name)
+	descPart := dimStyle.Render(desc)
+
+	switch {
+	case idx == m.browserCursor:
+		sb.WriteString(selectedStyle.Render(line))
+	case bi.Installed:
+		sb.WriteString(installedStyle.Render(line))
+	default:
+		sb.WriteString(normalStyle.Render(line))
+	}
+
+	sb.WriteString(" ")
+	sb.WriteString(descPart)
+	sb.WriteString("\n")
 }
 
 func (m *Model) countSelected() (int, int, int) {

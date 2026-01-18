@@ -7,6 +7,7 @@ const (
 	boxPadding       = 4
 	boxInnerPadding  = 2
 	descPaddingWidth = 50
+	minVisibleItems  = 3
 )
 
 // Scope labels.
