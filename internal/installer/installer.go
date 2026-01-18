@@ -16,19 +16,13 @@ const filePermissions = 0o600
 // Result represents the outcome of an installation.
 type Result struct {
 	Success bool
-	Path    string
-	Message string
-	Existed bool
 }
 
 // Install installs an item for a specific tool to the specified scope.
 func Install(item registry.Item, tool registry.Tool, scope config.Scope, force bool) (*Result, error) {
 	// Check compatibility
 	if !item.IsCompatibleWith(tool) {
-		return &Result{
-			Success: false,
-			Message: fmt.Sprintf("item not compatible with %s", tool),
-		}, nil
+		return &Result{Success: false}, nil
 	}
 
 	path, err := config.GetInstallPath(item, tool, scope)
@@ -38,12 +32,7 @@ func Install(item registry.Item, tool registry.Tool, scope config.Scope, force b
 
 	// Check if file already exists
 	if config.Exists(path) && !force {
-		return &Result{
-			Success: false,
-			Path:    path,
-			Message: "file already exists (use force to overwrite)",
-			Existed: true,
-		}, nil
+		return &Result{Success: false}, nil
 	}
 
 	// Transform content for the target tool
@@ -80,12 +69,7 @@ func Install(item registry.Item, tool registry.Tool, scope config.Scope, force b
 		return nil, fmt.Errorf("failed to save metadata: %w", err)
 	}
 
-	return &Result{
-		Success: true,
-		Path:    path,
-		Message: "installed successfully",
-		Existed: false,
-	}, nil
+	return &Result{Success: true}, nil
 }
 
 // Uninstall removes an installed item for a specific tool.
@@ -96,12 +80,7 @@ func Uninstall(item registry.Item, tool registry.Tool, scope config.Scope) (*Res
 	}
 
 	if !config.Exists(path) {
-		return &Result{
-			Success: false,
-			Path:    path,
-			Message: "file does not exist",
-			Existed: false,
-		}, nil
+		return &Result{Success: false}, nil
 	}
 
 	err = os.Remove(path)
@@ -116,12 +95,7 @@ func Uninstall(item registry.Item, tool registry.Tool, scope config.Scope) (*Res
 		_ = SaveMetadata(tool, scope, meta)
 	}
 
-	return &Result{
-		Success: true,
-		Path:    path,
-		Message: "uninstalled successfully",
-		Existed: true,
-	}, nil
+	return &Result{Success: true}, nil
 }
 
 // GetItemState determines the installation state of an item.
@@ -191,39 +165,4 @@ func GetItemState(item registry.Item, tool registry.Tool, scope config.Scope) (I
 		// File modified AND registry has new version
 		return StateModifiedWithUpdate, path, nil
 	}
-}
-
-// IsInstalled checks if an item is already installed for a specific tool at the given scope.
-//
-// Deprecated: Use GetItemState for more detailed status.
-func IsInstalled(item registry.Item, tool registry.Tool, scope config.Scope) (ItemState, string, error) {
-	return GetItemState(item, tool, scope)
-}
-
-// ScopeStatus represents installation status for both scopes.
-type ScopeStatus struct {
-	LocalState  ItemState
-	LocalPath   string
-	GlobalState ItemState
-	GlobalPath  string
-}
-
-// GetScopeStatus returns installation status for both scopes for a specific tool.
-func GetScopeStatus(item registry.Item, tool registry.Tool) (*ScopeStatus, error) {
-	localState, localPath, err := GetItemState(item, tool, config.ScopeLocal)
-	if err != nil {
-		return nil, err
-	}
-
-	globalState, globalPath, err := GetItemState(item, tool, config.ScopeGlobal)
-	if err != nil {
-		return nil, err
-	}
-
-	return &ScopeStatus{
-		LocalState:  localState,
-		LocalPath:   localPath,
-		GlobalState: globalState,
-		GlobalPath:  globalPath,
-	}, nil
 }

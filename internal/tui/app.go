@@ -32,10 +32,8 @@ type KeyMap struct {
 	SelectAll   key.Binding
 	DeselectAll key.Binding
 	UpdateAll   key.Binding
-	Filter      key.Binding
 	Back        key.Binding
 	Quit        key.Binding
-	Help        key.Binding
 }
 
 var keys = KeyMap{
@@ -60,17 +58,11 @@ var keys = KeyMap{
 	UpdateAll: key.NewBinding(
 		key.WithKeys("u"),
 	),
-	Filter: key.NewBinding(
-		key.WithKeys("f"),
-	),
 	Back: key.NewBinding(
 		key.WithKeys("esc"),
 	),
 	Quit: key.NewBinding(
 		key.WithKeys("q", "ctrl+c"),
-	),
-	Help: key.NewBinding(
-		key.WithKeys("?"),
 	),
 }
 
@@ -85,7 +77,6 @@ type BrowserItem struct {
 type MenuOption struct {
 	Label   string
 	Action  string
-	Count   int
 	Enabled bool
 }
 
@@ -112,8 +103,7 @@ type Model struct {
 	// Browser state
 	browserItems  []BrowserItem
 	browserCursor int
-	browserOffset int  // scroll offset for visible window
-	showAll       bool // false = only compatible, true = all
+	browserOffset int // scroll offset for visible window
 
 	// Action menu state
 	menuOptions []MenuOption
@@ -497,8 +487,6 @@ func (m *Model) updateBrowser(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.updateAllInstalled()
 	case key.Matches(msg, keys.Enter):
 		m.openActionMenu()
-	case key.Matches(msg, keys.Filter):
-		m.showAll = !m.showAll
 	case key.Matches(msg, keys.Back):
 		m.screen = ScreenScopeSelect
 	}
@@ -735,7 +723,6 @@ func (m *Model) buildMenuOptions() {
 		m.menuOptions = append(m.menuOptions, MenuOption{
 			Label:   fmt.Sprintf("Install (%d new)", newCount),
 			Action:  "install",
-			Count:   newCount,
 			Enabled: true,
 		})
 	}
@@ -744,14 +731,12 @@ func (m *Model) buildMenuOptions() {
 		m.menuOptions = append(m.menuOptions, MenuOption{
 			Label:   fmt.Sprintf("Update (%d installed)", installedCount),
 			Action:  "update",
-			Count:   installedCount,
 			Enabled: true,
 		})
 
 		m.menuOptions = append(m.menuOptions, MenuOption{
 			Label:   fmt.Sprintf("Uninstall (%d)", installedCount),
 			Action:  "uninstall",
-			Count:   installedCount,
 			Enabled: true,
 		})
 	}

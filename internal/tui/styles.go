@@ -94,6 +94,4 @@ const (
 	SymbolUpdate     = "↑"
 	SymbolModified   = "*"
 	SymbolCursor     = ">"
-	SymbolAgent      = "◆"
-	SymbolSkill      = "○"
 )
