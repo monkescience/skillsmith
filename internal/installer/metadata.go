@@ -16,14 +16,14 @@ import (
 const metadataFilename = ".skillsmith.json"
 
 // ItemState represents the installation state of an item.
-type ItemState int
+type ItemState string
 
 const (
-	StateNotInstalled       ItemState = iota
-	StateUpToDate                     // installed hash == file hash == registry hash
-	StateUpdateAvailable              // file matches installed hash, but registry changed
-	StateModified                     // file was modified locally
-	StateModifiedWithUpdate           // file modified AND registry has update
+	StateNotInstalled       ItemState = "not_installed"
+	StateUpToDate           ItemState = "up_to_date"
+	StateUpdateAvailable    ItemState = "update_available"
+	StateModified           ItemState = "modified"
+	StateModifiedWithUpdate ItemState = "modified_with_update"
 )
 
 // String returns a human-readable name for the state.
@@ -40,8 +40,15 @@ func (s ItemState) String() string {
 	case StateModifiedWithUpdate:
 		return "modified with update"
 	default:
-		return "unknown"
+		return string(s)
 	}
+}
+
+// ItemWithState pairs an item with its installation state.
+type ItemWithState struct {
+	Item        registry.Item
+	State       ItemState
+	InstallPath string
 }
 
 // IsInstalled returns true if the item is installed (any state except NotInstalled).

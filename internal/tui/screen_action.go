@@ -8,7 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/monke/skillsmith/internal/service"
+	"github.com/monke/skillsmith/internal/installer"
 )
 
 // openActionMenu transitions to the action menu screen.
@@ -119,12 +119,7 @@ func (m *Model) installNew() {
 			continue
 		}
 
-		result, err := m.svc.Install(service.InstallInput{
-			ItemName: bi.Item.Name,
-			Tool:     m.selectedTool,
-			Scope:    m.selectedScope,
-			Force:    false,
-		})
+		result, _, err := m.mgr.Install(bi.Item.Name, m.selectedTool, m.selectedScope, false)
 		if err != nil {
 			m.message = fmt.Sprintf("Error: %v", err)
 			m.messageStyle = errorMsgStyle
@@ -135,7 +130,7 @@ func (m *Model) installNew() {
 
 		if result.Success {
 			installed++
-			m.browser.Items[i].Status = service.StateUpToDate
+			m.browser.Items[i].Status = installer.StateUpToDate
 		}
 
 		m.browser.Items[i].Selected = false
@@ -166,12 +161,7 @@ func (m *Model) updateInstalled() {
 			continue
 		}
 
-		result, err := m.svc.Install(service.InstallInput{
-			ItemName: bi.Item.Name,
-			Tool:     m.selectedTool,
-			Scope:    m.selectedScope,
-			Force:    true,
-		})
+		result, _, err := m.mgr.Install(bi.Item.Name, m.selectedTool, m.selectedScope, true)
 		if err != nil {
 			m.message = fmt.Sprintf("Error: %v", err)
 			m.messageStyle = errorMsgStyle
@@ -182,7 +172,7 @@ func (m *Model) updateInstalled() {
 
 		if result.Success {
 			updated++
-			m.browser.Items[i].Status = service.StateUpToDate
+			m.browser.Items[i].Status = installer.StateUpToDate
 		}
 
 		m.browser.Items[i].Selected = false
@@ -219,12 +209,7 @@ func (m *Model) updateAllInstalled() {
 			continue
 		}
 
-		result, err := m.svc.Install(service.InstallInput{
-			ItemName: bi.Item.Name,
-			Tool:     m.selectedTool,
-			Scope:    m.selectedScope,
-			Force:    true,
-		})
+		result, _, err := m.mgr.Install(bi.Item.Name, m.selectedTool, m.selectedScope, true)
 		if err != nil {
 			m.message = fmt.Sprintf("Error: %v", err)
 			m.messageStyle = errorMsgStyle
@@ -234,7 +219,7 @@ func (m *Model) updateAllInstalled() {
 
 		if result.Success {
 			updated++
-			m.browser.Items[i].Status = service.StateUpToDate
+			m.browser.Items[i].Status = installer.StateUpToDate
 		}
 
 		m.browser.Items[i].Selected = false
@@ -265,11 +250,7 @@ func (m *Model) uninstallSelected() {
 			continue
 		}
 
-		result, err := m.svc.Uninstall(service.UninstallInput{
-			ItemName: bi.Item.Name,
-			Tool:     m.selectedTool,
-			Scope:    m.selectedScope,
-		})
+		result, _, err := m.mgr.Uninstall(bi.Item.Name, m.selectedTool, m.selectedScope)
 		if err != nil {
 			m.message = fmt.Sprintf("Error: %v", err)
 			m.messageStyle = errorMsgStyle
@@ -280,7 +261,7 @@ func (m *Model) uninstallSelected() {
 
 		if result.Success {
 			uninstalled++
-			m.browser.Items[i].Status = service.StateNotInstalled
+			m.browser.Items[i].Status = installer.StateNotInstalled
 		}
 
 		m.browser.Items[i].Selected = false

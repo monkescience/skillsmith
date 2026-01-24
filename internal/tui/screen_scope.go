@@ -8,7 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/monke/skillsmith/internal/service"
+	"github.com/monke/skillsmith/internal/config"
 )
 
 // updateScopeSelect handles input for the scope selection screen.
@@ -55,10 +55,10 @@ func (m *Model) viewScopeSelect() string {
 		var label, path string
 
 		switch scope {
-		case service.ScopeLocal:
+		case config.ScopeLocal:
 			label = LabelLocal
 			path = m.getLocalPath()
-		case service.ScopeGlobal:
+		case config.ScopeGlobal:
 			label = LabelGlobal
 			path = m.getGlobalPath()
 		}

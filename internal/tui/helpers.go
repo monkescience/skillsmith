@@ -1,17 +1,15 @@
 package tui
 
 import (
-	"github.com/monke/skillsmith/internal/service"
+	"github.com/monke/skillsmith/internal/config"
+	"github.com/monke/skillsmith/internal/registry"
 )
 
 // getLocalPath returns the local installation path for the selected tool.
 func (m *Model) getLocalPath() string {
 	// Use first item to get the path, or return default
-	items, err := m.svc.ListItems(service.ListItemsInput{
-		Tool:  m.selectedTool,
-		Scope: service.ScopeLocal,
-	})
-	if err != nil || len(items) == 0 {
+	items := m.mgr.ListItemsWithState(m.selectedTool, config.ScopeLocal, "")
+	if len(items) == 0 {
 		return "./"
 	}
 
@@ -34,11 +32,8 @@ func (m *Model) getLocalPath() string {
 // getGlobalPath returns the global installation path for the selected tool.
 func (m *Model) getGlobalPath() string {
 	// Use first item to get the path, or return default
-	items, err := m.svc.ListItems(service.ListItemsInput{
-		Tool:  m.selectedTool,
-		Scope: service.ScopeGlobal,
-	})
-	if err != nil || len(items) == 0 {
+	items := m.mgr.ListItemsWithState(m.selectedTool, config.ScopeGlobal, "")
+	if len(items) == 0 {
 		return "~/"
 	}
 
@@ -59,23 +54,17 @@ func (m *Model) getGlobalPath() string {
 }
 
 // countInstalled returns the number of installed items for the selected tool and scope.
-func (m *Model) countInstalled(scope service.Scope) int {
+func (m *Model) countInstalled(scope config.Scope) int {
 	installed, _ := m.countInstalledForTool(m.selectedTool, scope)
 
 	return installed
 }
 
 // countInstalledForTool returns the installed count and update count for a tool/scope.
-func (m *Model) countInstalledForTool(tool service.Tool, scope service.Scope) (int, int) {
+func (m *Model) countInstalledForTool(tool registry.Tool, scope config.Scope) (int, int) {
 	var installed, updates int
 
-	items, err := m.svc.ListItems(service.ListItemsInput{
-		Tool:  tool,
-		Scope: scope,
-	})
-	if err != nil {
-		return 0, 0
-	}
+	items := m.mgr.ListItemsWithState(tool, scope, "")
 
 	for _, item := range items {
 		if item.State.IsInstalled() {
@@ -92,7 +81,7 @@ func (m *Model) countInstalledForTool(tool service.Tool, scope service.Scope) (i
 
 // getScopeLabel returns the display label for the current scope.
 func (m *Model) getScopeLabel() string {
-	if m.selectedScope == service.ScopeGlobal {
+	if m.selectedScope == config.ScopeGlobal {
 		return LabelGlobal
 	}
 

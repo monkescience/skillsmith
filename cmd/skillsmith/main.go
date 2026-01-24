@@ -9,7 +9,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 
-	"github.com/monke/skillsmith/internal/service"
+	"github.com/monke/skillsmith/internal/loader"
+	"github.com/monke/skillsmith/internal/registry"
 	"github.com/monke/skillsmith/internal/tui"
 )
 
@@ -97,12 +98,12 @@ func init() {
 }
 
 func runTUI(_ *cobra.Command, _ []string) error {
-	svc, err := service.New()
+	mgr, err := loader.NewManager()
 	if err != nil {
-		return fmt.Errorf("initialize service: %w", err)
+		return fmt.Errorf("initialize manager: %w", err)
 	}
 
-	model := tui.NewModel(svc)
+	model := tui.NewModel(mgr)
 	p := tea.NewProgram(model, tea.WithAltScreen())
 
 	_, err = p.Run()
@@ -114,59 +115,51 @@ func runTUI(_ *cobra.Command, _ []string) error {
 }
 
 func runList(_ *cobra.Command, _ []string) error {
-	svc, err := service.New()
+	mgr, err := loader.NewManager()
 	if err != nil {
-		return fmt.Errorf("initialize service: %w", err)
+		return fmt.Errorf("initialize manager: %w", err)
 	}
 
 	w := os.Stdout
 
-	writeListOutput(w, svc)
+	writeListOutput(w, mgr)
 
 	return nil
 }
 
-func writeListOutput(w io.Writer, svc *service.Service) {
+func writeListOutput(w io.Writer, mgr *loader.Manager) {
 	mustWrite(w, "Available agents and skills:\n\n")
 
 	// List agents for all tools (use opencode as reference, items are the same)
-	items, _ := svc.ListItems(service.ListItemsInput{
-		Tool:  service.ToolOpenCode,
-		Scope: service.ScopeLocal,
-		Type:  service.ItemTypeAgent,
-	})
+	items := mgr.ListItems(registry.ToolOpenCode, registry.ItemTypeAgent)
 
 	if len(items) > 0 {
 		mustWrite(w, "  Agents:\n")
 
 		for _, item := range items {
-			compat := formatCompatibility(item.Item.Compatibility)
-			mustWrite(w, "    - "+item.Item.Name+": "+item.Item.Description+" "+compat+"\n")
+			compat := formatCompatibility(item.Compatibility)
+			mustWrite(w, "    - "+item.Name+": "+item.Description+" "+compat+"\n")
 		}
 
 		mustWrite(w, "\n")
 	}
 
 	// List skills
-	skills, _ := svc.ListItems(service.ListItemsInput{
-		Tool:  service.ToolOpenCode,
-		Scope: service.ScopeLocal,
-		Type:  service.ItemTypeSkill,
-	})
+	skills := mgr.ListItems(registry.ToolOpenCode, registry.ItemTypeSkill)
 
 	if len(skills) > 0 {
 		mustWrite(w, "  Skills:\n")
 
 		for _, item := range skills {
-			compat := formatCompatibility(item.Item.Compatibility)
-			mustWrite(w, "    - "+item.Item.Name+": "+item.Item.Description+" "+compat+"\n")
+			compat := formatCompatibility(item.Compatibility)
+			mustWrite(w, "    - "+item.Name+": "+item.Description+" "+compat+"\n")
 		}
 
 		mustWrite(w, "\n")
 	}
 }
 
-func formatCompatibility(tools []service.Tool) string {
+func formatCompatibility(tools []registry.Tool) string {
 	if len(tools) == 0 {
 		return ""
 	}
@@ -184,12 +177,12 @@ func mustWrite(w io.Writer, s string) {
 }
 
 func runRegistryList(_ *cobra.Command, _ []string) error {
-	svc, err := service.New()
+	mgr, err := loader.NewManager()
 	if err != nil {
-		return fmt.Errorf("initialize service: %w", err)
+		return fmt.Errorf("initialize manager: %w", err)
 	}
 
-	registries, err := svc.ListRegistries()
+	registries, err := mgr.ListRegistries()
 	if err != nil {
 		return fmt.Errorf("list registries: %w", err)
 	}
@@ -224,18 +217,15 @@ func runRegistryList(_ *cobra.Command, _ []string) error {
 }
 
 func runRegistryAdd(_ *cobra.Command, args []string) error {
-	svc, err := service.New()
+	mgr, err := loader.NewManager()
 	if err != nil {
-		return fmt.Errorf("initialize service: %w", err)
+		return fmt.Errorf("initialize manager: %w", err)
 	}
 
 	name := args[0]
 	path := args[1]
 
-	err = svc.AddRegistry(service.AddRegistryInput{
-		Name: name,
-		Path: path,
-	})
+	err = mgr.AddRegistry(name, path)
 	if err != nil {
 		return fmt.Errorf("add registry: %w", err)
 	}
@@ -246,14 +236,14 @@ func runRegistryAdd(_ *cobra.Command, args []string) error {
 }
 
 func runRegistryRemove(_ *cobra.Command, args []string) error {
-	svc, err := service.New()
+	mgr, err := loader.NewManager()
 	if err != nil {
-		return fmt.Errorf("initialize service: %w", err)
+		return fmt.Errorf("initialize manager: %w", err)
 	}
 
 	name := args[0]
 
-	err = svc.RemoveRegistry(name)
+	err = mgr.RemoveRegistry(name)
 	if err != nil {
 		return fmt.Errorf("remove registry: %w", err)
 	}

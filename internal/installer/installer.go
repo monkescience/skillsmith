@@ -25,7 +25,7 @@ func Install(item registry.Item, tool registry.Tool, scope config.Scope, force b
 		return &Result{Success: false}, nil
 	}
 
-	path, err := config.GetInstallPath(item, tool, scope)
+	path, err := config.GetInstallPath(item.Name, item.Type, tool, scope)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get install path: %w", err)
 	}
@@ -74,7 +74,7 @@ func Install(item registry.Item, tool registry.Tool, scope config.Scope, force b
 
 // Uninstall removes an installed item for a specific tool.
 func Uninstall(item registry.Item, tool registry.Tool, scope config.Scope) (*Result, error) {
-	path, err := config.GetInstallPath(item, tool, scope)
+	path, err := config.GetInstallPath(item.Name, item.Type, tool, scope)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get install path: %w", err)
 	}
@@ -100,7 +100,7 @@ func Uninstall(item registry.Item, tool registry.Tool, scope config.Scope) (*Res
 
 // GetItemState determines the installation state of an item.
 func GetItemState(item registry.Item, tool registry.Tool, scope config.Scope) (ItemState, string, error) {
-	path, err := config.GetInstallPath(item, tool, scope)
+	path, err := config.GetInstallPath(item.Name, item.Type, tool, scope)
 	if err != nil {
 		return StateNotInstalled, "", fmt.Errorf("get install path: %w", err)
 	}

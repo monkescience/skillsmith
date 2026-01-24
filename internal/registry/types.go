@@ -1,27 +1,30 @@
 package registry
 
-import "slices"
+import (
+	"slices"
 
-// Tool represents a supported AI coding tool.
-type Tool string
+	"github.com/monke/skillsmith/internal/domain"
+)
 
+// Re-export domain types for convenience.
+type (
+	Tool     = domain.Tool
+	ItemType = domain.ItemType
+)
+
+// Re-export constants.
 const (
-	ToolOpenCode Tool = "opencode"
-	ToolClaude   Tool = "claude"
+	ToolOpenCode = domain.ToolOpenCode
+	ToolClaude   = domain.ToolClaude
+
+	ItemTypeAgent = domain.ItemTypeAgent
+	ItemTypeSkill = domain.ItemTypeSkill
 )
 
 // AllTools returns all supported tools.
 func AllTools() []Tool {
-	return []Tool{ToolOpenCode, ToolClaude}
+	return domain.AllTools()
 }
-
-// ItemType represents the type of registry item.
-type ItemType string
-
-const (
-	ItemTypeAgent ItemType = "agent"
-	ItemTypeSkill ItemType = "skill"
-)
 
 // ToolConfig contains tool-specific settings for an item.
 type ToolConfig struct {

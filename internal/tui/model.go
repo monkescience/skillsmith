@@ -5,20 +5,22 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/monke/skillsmith/internal/service"
+	"github.com/monke/skillsmith/internal/config"
+	"github.com/monke/skillsmith/internal/loader"
+	"github.com/monke/skillsmith/internal/registry"
 )
 
 // Model is the main application model for the TUI.
 type Model struct {
-	svc    *service.Service
+	mgr    *loader.Manager
 	screen Screen
 	width  int
 	height int
 	ready  bool
 
 	// Current selections (persisted across screens)
-	selectedTool  service.Tool
-	selectedScope service.Scope
+	selectedTool  registry.Tool
+	selectedScope config.Scope
 
 	// Screen-specific state
 	toolSelect  ToolSelectState
@@ -31,17 +33,17 @@ type Model struct {
 	messageStyle lipgloss.Style
 }
 
-// NewModel creates a new TUI model with the given service.
-func NewModel(svc *service.Service) *Model {
+// NewModel creates a new TUI model with the given manager.
+func NewModel(mgr *loader.Manager) *Model {
 	return &Model{
-		svc:    svc,
+		mgr:    mgr,
 		screen: ScreenToolSelect,
 		toolSelect: ToolSelectState{
-			Tools:  service.AllTools(),
+			Tools:  registry.AllTools(),
 			Cursor: 0,
 		},
 		scopeSelect: ScopeSelectState{
-			Scopes: service.AllScopes(),
+			Scopes: config.AllScopes(),
 			Cursor: 0,
 		},
 	}
