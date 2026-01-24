@@ -25,12 +25,23 @@ license: MIT
 
 ## Guidelines
 
+- Subject line only (no body) unless explicitly requested
 - Subject line max 72 characters
 - Use imperative mood ("add" not "added")
 - Focus on WHY, not just WHAT
 - Reference issues when relevant
 
-## Example
+## Examples
+
+```
+feat(auth): add OAuth2 support for GitHub login
+```
+
+```
+fix(api): handle nil pointer in user lookup
+```
+
+With body (only when requested):
 
 ```
 feat(auth): add OAuth2 support for GitHub login
