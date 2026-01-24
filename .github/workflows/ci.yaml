@@ -32,7 +32,7 @@ jobs:
         run: go test -race -coverprofile=coverage.out -covermode=atomic ./...
       - name: Check coverage
         run: |
-          go tool cover -func=coverage.out >> $GITHUB_STEP_SUMMARY
+          go tool cover -func=coverage.out | grep total >> $GITHUB_STEP_SUMMARY
           COVERAGE=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
           echo "Total coverage: ${COVERAGE}%"
           if (( $(echo "$COVERAGE < 80" | bc -l) )); then
