@@ -60,6 +60,9 @@ type Item struct {
 	// License for this item.
 	License string `yaml:"license,omitempty"`
 
+	// Metadata is an arbitrary key-value map for additional properties.
+	Metadata map[string]string `yaml:"metadata,omitempty"`
+
 	// Body is the content after frontmatter (the actual prompt/instructions).
 	Body string `yaml:"-"`
 

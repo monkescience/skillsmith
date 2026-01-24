@@ -3,6 +3,7 @@ package transformer
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/monke/skillsmith/internal/registry"
@@ -23,32 +24,62 @@ func Transform(item registry.Item, tool registry.Tool) (string, error) {
 }
 
 // transformOpenCode converts an item to OpenCode format.
+// Skills and agents have different frontmatter requirements per the agentskills.io spec.
 func transformOpenCode(item registry.Item) string {
 	var sb strings.Builder
 
 	// Write frontmatter
 	sb.WriteString("---\n")
+
+	// Name is required for skills per agentskills.io spec
+	sb.WriteString(fmt.Sprintf("name: %s\n", item.Name))
 	sb.WriteString(fmt.Sprintf("description: %s\n", item.Description))
 
-	// Add mode based on type
-	if item.Type == registry.ItemTypeAgent {
-		sb.WriteString("mode: subagent\n")
+	// Add optional license
+	if item.License != "" {
+		sb.WriteString(fmt.Sprintf("license: %s\n", item.License))
 	}
 
-	// Add tools configuration
-	if item.Tools.Write != nil || item.Tools.Edit != nil || item.Tools.Bash != nil {
-		sb.WriteString("tools:\n")
+	// Add optional compatibility
+	if item.Type == registry.ItemTypeSkill {
+		sb.WriteString("compatibility: opencode\n")
+	}
 
-		if item.Tools.Write != nil {
-			sb.WriteString(fmt.Sprintf("  write: %t\n", *item.Tools.Write))
+	// Add optional metadata (sorted for deterministic output)
+	if len(item.Metadata) > 0 {
+		sb.WriteString("metadata:\n")
+
+		keys := make([]string, 0, len(item.Metadata))
+		for k := range item.Metadata {
+			keys = append(keys, k)
 		}
 
-		if item.Tools.Edit != nil {
-			sb.WriteString(fmt.Sprintf("  edit: %t\n", *item.Tools.Edit))
-		}
+		sort.Strings(keys)
 
-		if item.Tools.Bash != nil {
-			sb.WriteString(fmt.Sprintf("  bash: %t\n", *item.Tools.Bash))
+		for _, k := range keys {
+			sb.WriteString(fmt.Sprintf("  %s: %s\n", k, item.Metadata[k]))
+		}
+	}
+
+	// Agents have additional fields (mode, tools) that skills don't have
+	if item.Type == registry.ItemTypeAgent {
+		sb.WriteString("mode: subagent\n")
+
+		// Add tools configuration (only for agents)
+		if item.Tools.Write != nil || item.Tools.Edit != nil || item.Tools.Bash != nil {
+			sb.WriteString("tools:\n")
+
+			if item.Tools.Write != nil {
+				sb.WriteString(fmt.Sprintf("  write: %t\n", *item.Tools.Write))
+			}
+
+			if item.Tools.Edit != nil {
+				sb.WriteString(fmt.Sprintf("  edit: %t\n", *item.Tools.Edit))
+			}
+
+			if item.Tools.Bash != nil {
+				sb.WriteString(fmt.Sprintf("  bash: %t\n", *item.Tools.Bash))
+			}
 		}
 	}
 
@@ -61,7 +92,7 @@ func transformOpenCode(item registry.Item) string {
 }
 
 // transformClaude converts an item to Claude Code format.
-// For skills, this creates a SKILL.md with the appropriate frontmatter.
+// For skills, this creates a SKILL.md with the appropriate frontmatter per the agentskills.io spec.
 func transformClaude(item registry.Item) string {
 	var sb strings.Builder
 
@@ -70,8 +101,30 @@ func transformClaude(item registry.Item) string {
 	sb.WriteString(fmt.Sprintf("name: %s\n", item.Name))
 	sb.WriteString(fmt.Sprintf("description: %s\n", item.Description))
 
+	// Add optional license
 	if item.License != "" {
 		sb.WriteString(fmt.Sprintf("license: %s\n", item.License))
+	}
+
+	// Add optional compatibility
+	if item.Type == registry.ItemTypeSkill {
+		sb.WriteString("compatibility: claude\n")
+	}
+
+	// Add optional metadata (sorted for deterministic output)
+	if len(item.Metadata) > 0 {
+		sb.WriteString("metadata:\n")
+
+		keys := make([]string, 0, len(item.Metadata))
+		for k := range item.Metadata {
+			keys = append(keys, k)
+		}
+
+		sort.Strings(keys)
+
+		for _, k := range keys {
+			sb.WriteString(fmt.Sprintf("  %s: %s\n", k, item.Metadata[k]))
+		}
 	}
 
 	sb.WriteString("---\n\n")
