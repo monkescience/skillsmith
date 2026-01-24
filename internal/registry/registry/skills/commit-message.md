@@ -1,15 +1,9 @@
 ---
 name: commit-message
 description: Writes clear, conventional commit messages from staged changes
-category: workflow
 compatibility:
   - opencode
   - claude
-tags:
-  - git
-  - commits
-  - conventional-commits
-author: skillsmith
 license: MIT
 ---
 

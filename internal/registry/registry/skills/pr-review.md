@@ -1,15 +1,9 @@
 ---
 name: pr-review
 description: Reviews pull requests with structured feedback and suggestions
-category: workflow
 compatibility:
   - opencode
   - claude
-tags:
-  - git
-  - pull-request
-  - review
-author: skillsmith
 license: MIT
 ---
 

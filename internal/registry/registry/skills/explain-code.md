@@ -1,15 +1,9 @@
 ---
 name: explain-code
 description: Explains complex code with clear, structured breakdowns
-category: learning
 compatibility:
   - opencode
   - claude
-tags:
-  - explanation
-  - learning
-  - documentation
-author: skillsmith
 license: MIT
 ---
 

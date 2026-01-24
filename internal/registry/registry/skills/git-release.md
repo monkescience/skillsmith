@@ -1,15 +1,9 @@
 ---
 name: git-release
 description: Creates consistent releases with changelogs and version bumps
-category: workflow
 compatibility:
   - opencode
   - claude
-tags:
-  - git
-  - release
-  - changelog
-author: skillsmith
 license: MIT
 ---
 

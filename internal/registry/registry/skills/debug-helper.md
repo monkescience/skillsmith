@@ -1,15 +1,9 @@
 ---
 name: debug-helper
 description: Helps debug issues with systematic analysis and suggestions
-category: debugging
 compatibility:
   - opencode
   - claude
-tags:
-  - debugging
-  - troubleshooting
-  - errors
-author: skillsmith
 license: MIT
 ---
 
