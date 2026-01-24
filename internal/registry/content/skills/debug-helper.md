@@ -1,40 +1,63 @@
 ---
 name: debug-helper
-description: Analyzes error messages, stack traces, and unexpected behavior to identify root causes and suggest fixes. Use when debugging errors, exceptions, runtime issues, or when something isn't working as expected.
+description: Debug issues systematically using a structured approach. Use when troubleshooting bugs, investigating errors, diagnosing problems, or fixing unexpected behavior.
 compatibility:
   - opencode
   - claude
 license: MIT
 ---
 
-## What I do
+# Debugging
 
-- Analyze error messages and stack traces
-- Identify potential root causes
-- Suggest debugging steps
-- Recommend fixes
+A systematic approach to finding and fixing bugs.
 
-## My approach
+## 1. Reproduce the Issue
 
-1. **Understand**: What error/behavior are you seeing?
-2. **Reproduce**: Can we reliably trigger the issue?
-3. **Isolate**: Narrow down where the problem is
-4. **Hypothesize**: What could cause this?
-5. **Test**: Verify hypotheses
-6. **Fix**: Implement and verify the solution
+- Get exact steps to reproduce the bug
+- Note the expected vs actual behavior
+- Identify the minimal reproduction case
 
-## Information I need
+## 2. Gather Information
 
-- Error message / stack trace
-- Steps to reproduce
-- Expected vs actual behavior
-- Recent changes that might be related
-- Environment details (OS, versions, etc.)
+- Read error messages carefully
+- Check logs for relevant entries
+- Identify when the issue started (recent changes?)
+- Note any patterns (specific inputs, timing, environment)
 
-## Common issues I help with
+## 3. Form Hypotheses
 
-- Runtime errors and exceptions
-- Logic bugs
-- Performance issues
-- Integration problems
+Based on the symptoms, list possible causes:
+- Recent code changes
 - Configuration issues
+- Data corruption
+- Race conditions
+- External dependencies
+
+## 4. Test Hypotheses
+
+For each hypothesis:
+1. Predict what you should observe if it's correct
+2. Design a test to verify
+3. Execute the test
+4. Evaluate results
+
+## 5. Isolate the Problem
+
+Use binary search to narrow down:
+- Comment out code sections
+- Add logging at key points
+- Use a debugger to step through
+- Simplify inputs
+
+## 6. Fix and Verify
+
+- Make the minimal fix
+- Add a test that would have caught this bug
+- Verify the fix in the original context
+- Check for similar issues elsewhere
+
+## 7. Document
+
+- Add comments if the fix isn't obvious
+- Update documentation if needed
+- Share learnings with the team
