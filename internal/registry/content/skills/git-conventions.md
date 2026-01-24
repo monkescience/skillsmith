@@ -1,6 +1,6 @@
 ---
 name: git-conventions
-description: Git workflow conventions - Conventional Commits, atomic commits, PR reviews with Conventional Comments
+description: Git workflow conventions for Conventional Commits, atomic commits, and PR reviews with Conventional Comments. Load when working with git, commits, branches, or pull requests.
 compatibility:
   - opencode
   - claude

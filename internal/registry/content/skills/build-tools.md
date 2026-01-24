@@ -1,6 +1,6 @@
 ---
 name: build-tools
-description: Preferences for build tools and CLI usage - Makefile, Mage, project tooling
+description: Build tool preferences for Makefile, Mage, and project CLI tooling. Load when running builds, tests, linting, or using project tooling.
 compatibility:
   - opencode
   - claude

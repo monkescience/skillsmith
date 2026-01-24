@@ -1,6 +1,6 @@
 ---
 name: debug-helper
-description: Helps debug issues with systematic analysis and suggestions
+description: Analyzes error messages, stack traces, and unexpected behavior to identify root causes and suggest fixes. Use when debugging errors, exceptions, runtime issues, or when something isn't working as expected.
 compatibility:
   - opencode
   - claude

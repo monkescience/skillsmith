@@ -1,6 +1,6 @@
 ---
 name: commit-message
-description: Writes clear, conventional commit messages from staged changes
+description: Analyzes staged git changes and generates conventional commit messages. Use when committing code, writing commit messages, or preparing a git commit.
 compatibility:
   - opencode
   - claude

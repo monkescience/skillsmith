@@ -1,6 +1,6 @@
 ---
 name: pr-review
-description: Reviews pull requests with structured feedback and suggestions
+description: Reviews pull request changes with structured feedback using conventional comments. Use when reviewing a PR, preparing for merge, or when asked to review code changes.
 compatibility:
   - opencode
   - claude

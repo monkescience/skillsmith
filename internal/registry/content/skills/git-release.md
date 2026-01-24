@@ -1,6 +1,6 @@
 ---
 name: git-release
-description: Creates consistent releases with changelogs and version bumps
+description: Drafts release notes from commits, proposes semantic version bumps, and generates changelog entries. Use when preparing a tagged release, creating a new version, or generating release notes.
 compatibility:
   - opencode
   - claude

@@ -1,6 +1,6 @@
 ---
 name: assistant-behavior
-description: Core behavioral guidelines for AI coding assistants - scope discipline, asking before changes, and interaction patterns
+description: Behavioral guidelines for scope discipline, when to ask before changes, and interaction patterns. Load when assisting with coding tasks to follow established behavior conventions.
 compatibility:
   - opencode
   - claude
