@@ -1,6 +1,6 @@
 ---
 name: pr-review
-description: Review pull requests systematically and provide actionable feedback using Conventional Comments format. Use when reviewing PRs, checking code changes, or evaluating merge requests.
+description: Review pull requests and code for quality, correctness, and maintainability using Conventional Comments. Use when reviewing PRs or code changes.
 compatibility:
   - opencode
   - claude

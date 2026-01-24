@@ -1,5 +1,5 @@
 ---
-name: commit-message
+name: commit
 description: Create atomic, well-formatted git commits following Conventional Commits format. Use when committing staged changes, crafting commit messages, or preparing a git commit.
 compatibility:
   - opencode
@@ -69,6 +69,10 @@ Bad:
 - `updated files` (vague)
 - `Fix bug` (no scope, not descriptive)
 - `feat: Added new feature for user authentication` (past tense, too long)
+
+## Pull Request Titles
+
+Use the same Conventional Commits format for PR titles.
 
 ## Verification
 

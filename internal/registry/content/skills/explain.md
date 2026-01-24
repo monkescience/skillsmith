@@ -1,5 +1,5 @@
 ---
-name: explain-code
+name: explain
 description: Breaks down complex code into understandable parts with explanations of purpose, flow, and patterns. Use when you need to understand unfamiliar code, onboard to a codebase, or learn how something works.
 compatibility:
   - opencode
