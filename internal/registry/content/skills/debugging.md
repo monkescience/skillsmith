@@ -1,5 +1,5 @@
 ---
-name: debug
+name: debugging
 description: Debug issues systematically using a structured approach. Use when troubleshooting bugs, investigating errors, diagnosing problems, or fixing unexpected behavior.
 compatibility:
   - opencode

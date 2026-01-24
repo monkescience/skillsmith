@@ -1,5 +1,5 @@
 ---
-name: commit
+name: committing
 description: Create atomic, well-formatted git commits following Conventional Commits format. Use when committing staged changes, crafting commit messages, or preparing a git commit.
 compatibility:
   - opencode
@@ -7,7 +7,7 @@ compatibility:
 license: MIT
 ---
 
-# Commit
+# Committing
 
 Create a git commit for the staged changes.
 

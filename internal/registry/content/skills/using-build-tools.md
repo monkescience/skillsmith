@@ -1,13 +1,13 @@
 ---
-name: build-tools
-description: Always use project build tools (Makefile, Mage, npm scripts) instead of running commands directly. Load when running builds, tests, or linting.
+name: using-build-tools
+description: Always use project build tools (Makefile, Mage, npm scripts) instead of running commands directly. Use when running builds, tests, or linting.
 compatibility:
   - opencode
   - claude
 license: MIT
 ---
 
-# Build Tools
+# Using Build Tools
 
 Before running any build, test, lint, or format command directly, check for project tooling.
 

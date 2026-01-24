@@ -1,5 +1,5 @@
 ---
-name: plan
+name: planning
 description: Create detailed implementation plans before writing code. Use when planning new features, complex tasks, architectural changes, or multi-step implementations.
 compatibility:
   - opencode
@@ -7,7 +7,7 @@ compatibility:
 license: MIT
 ---
 
-# Plan
+# Planning
 
 Create a detailed implementation plan before writing code.
 

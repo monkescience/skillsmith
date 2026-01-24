@@ -1,13 +1,13 @@
 ---
-name: go-style
-description: Go coding conventions and idioms. Load when writing or reviewing Go code.
+name: writing-go
+description: Go coding conventions and idioms. Use when writing, reviewing, or generating Go code in *.go files.
 compatibility:
   - opencode
   - claude
 license: MIT
 ---
 
-# Go Style Guide
+# Writing Go
 
 ## Function Signatures
 

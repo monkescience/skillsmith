@@ -1,5 +1,5 @@
 ---
-name: pr-review
+name: reviewing-prs
 description: Review pull requests and code for quality, correctness, and maintainability using Conventional Comments. Use when reviewing PRs or code changes.
 compatibility:
   - opencode
@@ -7,7 +7,7 @@ compatibility:
 license: MIT
 ---
 
-# PR Review
+# Reviewing PRs
 
 Review a pull request systematically and provide actionable feedback.
 

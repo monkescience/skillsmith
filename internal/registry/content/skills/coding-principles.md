@@ -1,6 +1,6 @@
 ---
-name: code-principles
-description: Code design principles covering style, naming, error handling, and testing patterns. Load when writing or reviewing code to follow established conventions.
+name: coding-principles
+description: Code design principles covering style, naming, error handling, and testing patterns. Use when writing or reviewing code to follow established conventions.
 compatibility:
   - opencode
   - claude

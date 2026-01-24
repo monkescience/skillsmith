@@ -1,5 +1,5 @@
 ---
-name: refactor
+name: refactoring
 description: Refactor code safely while preserving behavior. Use when improving code structure, reducing duplication, renaming for clarity, extracting functions, or reorganizing modules.
 compatibility:
   - opencode
