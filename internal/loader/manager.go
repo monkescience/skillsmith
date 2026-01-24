@@ -9,6 +9,7 @@ import (
 
 	"github.com/monke/skillsmith/internal/config"
 	"github.com/monke/skillsmith/internal/installer"
+	"github.com/monke/skillsmith/internal/project"
 	"github.com/monke/skillsmith/internal/registry"
 )
 
@@ -21,6 +22,7 @@ var (
 	ErrRegistryExists      = errors.New("registry with this name already exists")
 	ErrCannotRemoveBuiltin = errors.New("cannot remove the builtin registry")
 	ErrRegistryNotFound    = errors.New("registry not found")
+	ErrInvalidURL          = errors.New("invalid git URL")
 )
 
 // Manager provides the main API for working with the registry.
@@ -304,4 +306,271 @@ func (m *Manager) RemoveRegistry(name string) error {
 	}
 
 	return nil
+}
+
+// AddGitRegistry adds a new Git registry source.
+func (m *Manager) AddGitRegistry(name, url string) error {
+	// Basic URL validation
+	if !strings.HasPrefix(url, "https://") && !strings.HasPrefix(url, "git@") &&
+		!strings.HasPrefix(url, "http://") {
+		return fmt.Errorf("%w: must start with https://, http://, or git@", ErrInvalidURL)
+	}
+
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		return fmt.Errorf("load config: %w", err)
+	}
+
+	// Check for duplicate name
+	if name == "builtin" {
+		return fmt.Errorf("%w: %s", ErrRegistryExists, name)
+	}
+
+	for _, reg := range cfg.Registries {
+		if reg.Name == name {
+			return fmt.Errorf("%w: %s", ErrRegistryExists, name)
+		}
+	}
+
+	cfg.Registries = append(cfg.Registries, config.RegistrySource{
+		Name: name,
+		URL:  url,
+		Type: "git",
+	})
+
+	err = config.SaveConfig(cfg)
+	if err != nil {
+		return fmt.Errorf("save config: %w", err)
+	}
+
+	return nil
+}
+
+// ProjectInstallResult represents the result of installing a single item for a project.
+type ProjectInstallResult struct {
+	ItemName string
+	ItemType registry.ItemType
+	Tool     registry.Tool
+	Success  bool
+	Path     string
+	Error    error
+	Skipped  bool // true if item was skipped (not compatible, already installed, etc.)
+	Reason   string
+}
+
+// InstallProjectItems installs all items defined in the project config.
+// Returns results for each item/tool combination.
+func (m *Manager) InstallProjectItems(
+	projectCfg *project.Config,
+	scope config.Scope,
+	force bool,
+) []ProjectInstallResult {
+	results := make([]ProjectInstallResult, 0)
+
+	// Determine which tools to install for
+	tools := m.getTargetTools(projectCfg)
+
+	// Install skills
+	for _, skillName := range projectCfg.Skills {
+		for _, tool := range tools {
+			result := m.installProjectItem(skillName, registry.ItemTypeSkill, tool, scope, force)
+			results = append(results, result)
+		}
+	}
+
+	// Install agents
+	for _, agentName := range projectCfg.Agents {
+		for _, tool := range tools {
+			result := m.installProjectItem(agentName, registry.ItemTypeAgent, tool, scope, force)
+			results = append(results, result)
+		}
+	}
+
+	return results
+}
+
+// installProjectItem installs a single item for a tool.
+func (m *Manager) installProjectItem(
+	name string,
+	itemType registry.ItemType,
+	tool registry.Tool,
+	scope config.Scope,
+	force bool,
+) ProjectInstallResult {
+	result := ProjectInstallResult{
+		ItemName: name,
+		ItemType: itemType,
+		Tool:     tool,
+	}
+
+	item, err := m.GetItem(name)
+	if err != nil {
+		result.Error = err
+		result.Reason = "not found in registry"
+
+		return result
+	}
+
+	// Check if item type matches
+	if item.Type != itemType {
+		result.Skipped = true
+		result.Reason = fmt.Sprintf("is a %s, not a %s", item.Type, itemType)
+
+		return result
+	}
+
+	// Check compatibility
+	if !item.IsCompatibleWith(tool) {
+		result.Skipped = true
+		result.Reason = fmt.Sprintf("not compatible with %s", tool)
+
+		return result
+	}
+
+	// Get install path
+	path, err := installer.GetInstallPath(*item, tool, scope)
+	if err != nil {
+		result.Error = fmt.Errorf("get install path: %w", err)
+
+		return result
+	}
+
+	result.Path = path
+
+	// Check current state
+	state, _, _ := installer.GetItemState(*item, tool, scope)
+	if state == installer.StateUpToDate && !force {
+		result.Skipped = true
+		result.Success = true
+		result.Reason = "already up to date"
+
+		return result
+	}
+
+	// Install
+	installResult, err := installer.Install(*item, tool, scope, force)
+	if err != nil {
+		result.Error = err
+
+		return result
+	}
+
+	result.Success = installResult.Success
+
+	return result
+}
+
+// getTargetTools returns the tools to install for based on project config.
+func (m *Manager) getTargetTools(projectCfg *project.Config) []registry.Tool {
+	if len(projectCfg.Tools) == 0 {
+		// No tools specified, use all supported tools
+		return []registry.Tool{registry.ToolOpenCode, registry.ToolClaude}
+	}
+
+	tools := make([]registry.Tool, 0, len(projectCfg.Tools))
+
+	for _, t := range projectCfg.Tools {
+		switch strings.ToLower(t) {
+		case "opencode":
+			tools = append(tools, registry.ToolOpenCode)
+		case "claude":
+			tools = append(tools, registry.ToolClaude)
+		}
+	}
+
+	return tools
+}
+
+// GetProjectStatus returns the installation status for all project items.
+func (m *Manager) GetProjectStatus(
+	projectCfg *project.Config,
+	scope config.Scope,
+) []ProjectInstallResult {
+	results := make([]ProjectInstallResult, 0)
+
+	tools := m.getTargetTools(projectCfg)
+
+	// Check skills
+	for _, skillName := range projectCfg.Skills {
+		for _, tool := range tools {
+			result := m.getItemStatus(skillName, registry.ItemTypeSkill, tool, scope)
+			results = append(results, result)
+		}
+	}
+
+	// Check agents
+	for _, agentName := range projectCfg.Agents {
+		for _, tool := range tools {
+			result := m.getItemStatus(agentName, registry.ItemTypeAgent, tool, scope)
+			results = append(results, result)
+		}
+	}
+
+	return results
+}
+
+// getItemStatus returns the installation status for a single item.
+func (m *Manager) getItemStatus(
+	name string,
+	itemType registry.ItemType,
+	tool registry.Tool,
+	scope config.Scope,
+) ProjectInstallResult {
+	result := ProjectInstallResult{
+		ItemName: name,
+		ItemType: itemType,
+		Tool:     tool,
+	}
+
+	item, err := m.GetItem(name)
+	if err != nil {
+		result.Error = err
+		result.Reason = "not found in registry"
+
+		return result
+	}
+
+	if item.Type != itemType {
+		result.Skipped = true
+		result.Reason = fmt.Sprintf("is a %s, not a %s", item.Type, itemType)
+
+		return result
+	}
+
+	if !item.IsCompatibleWith(tool) {
+		result.Skipped = true
+		result.Reason = fmt.Sprintf("not compatible with %s", tool)
+
+		return result
+	}
+
+	path, err := installer.GetInstallPath(*item, tool, scope)
+	if err != nil {
+		result.Error = fmt.Errorf("get install path: %w", err)
+
+		return result
+	}
+
+	result.Path = path
+
+	state, _, _ := installer.GetItemState(*item, tool, scope)
+
+	switch state {
+	case installer.StateUpToDate:
+		result.Success = true
+		result.Reason = "installed"
+	case installer.StateNotInstalled:
+		result.Reason = "not installed"
+	case installer.StateUpdateAvailable:
+		result.Success = true
+		result.Reason = "update available"
+	case installer.StateModified:
+		result.Success = true
+		result.Reason = "locally modified"
+	case installer.StateModifiedWithUpdate:
+		result.Success = true
+		result.Reason = "modified + update available"
+	}
+
+	return result
 }
