@@ -3,6 +3,7 @@ package installer
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/monke/skillsmith/internal/config"
@@ -18,6 +19,44 @@ type Result struct {
 	Success bool
 }
 
+// GetInstallPath returns the full path where an item should be installed.
+func GetInstallPath(item registry.Item, tool registry.Tool, scope config.Scope) (string, error) {
+	paths, err := config.GetPaths(string(tool))
+	if err != nil {
+		return "", fmt.Errorf("get paths: %w", err)
+	}
+
+	var baseDir string
+	if scope == config.ScopeGlobal {
+		baseDir = paths.GlobalDir
+	} else {
+		baseDir = paths.LocalDir
+	}
+
+	filename := item.Name + ".md"
+
+	switch item.Type {
+	case registry.ItemTypeAgent:
+		if paths.AgentsSubdir == "" {
+			// For tools without agent subdirs (like Claude), use skills instead
+			skillDir := filepath.Join(baseDir, paths.SkillsSubdir, item.Name)
+
+			return filepath.Join(skillDir, "SKILL.md"), nil
+		}
+
+		return filepath.Join(baseDir, paths.AgentsSubdir, filename), nil
+
+	case registry.ItemTypeSkill:
+		// Skills go in skills/<name>/SKILL.md
+		skillDir := filepath.Join(baseDir, paths.SkillsSubdir, item.Name)
+
+		return filepath.Join(skillDir, "SKILL.md"), nil
+
+	default:
+		return filepath.Join(baseDir, filename), nil
+	}
+}
+
 // Install installs an item for a specific tool to the specified scope.
 func Install(item registry.Item, tool registry.Tool, scope config.Scope, force bool) (*Result, error) {
 	// Check compatibility
@@ -25,7 +64,7 @@ func Install(item registry.Item, tool registry.Tool, scope config.Scope, force b
 		return &Result{Success: false}, nil
 	}
 
-	path, err := config.GetInstallPath(item.Name, item.Type, tool, scope)
+	path, err := GetInstallPath(item, tool, scope)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get install path: %w", err)
 	}
@@ -74,7 +113,7 @@ func Install(item registry.Item, tool registry.Tool, scope config.Scope, force b
 
 // Uninstall removes an installed item for a specific tool.
 func Uninstall(item registry.Item, tool registry.Tool, scope config.Scope) (*Result, error) {
-	path, err := config.GetInstallPath(item.Name, item.Type, tool, scope)
+	path, err := GetInstallPath(item, tool, scope)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get install path: %w", err)
 	}
@@ -100,7 +139,7 @@ func Uninstall(item registry.Item, tool registry.Tool, scope config.Scope) (*Res
 
 // GetItemState determines the installation state of an item.
 func GetItemState(item registry.Item, tool registry.Tool, scope config.Scope) (ItemState, string, error) {
-	path, err := config.GetInstallPath(item.Name, item.Type, tool, scope)
+	path, err := GetInstallPath(item, tool, scope)
 	if err != nil {
 		return StateNotInstalled, "", fmt.Errorf("get install path: %w", err)
 	}

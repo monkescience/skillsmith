@@ -107,7 +107,7 @@ func (m *Metadata) Remove(itemName string) {
 
 // GetMetadataPath returns the path to the metadata file for a tool and scope.
 func GetMetadataPath(tool registry.Tool, scope config.Scope) (string, error) {
-	paths, err := config.GetPaths(tool)
+	paths, err := config.GetPaths(string(tool))
 	if err != nil {
 		return "", fmt.Errorf("get paths: %w", err)
 	}

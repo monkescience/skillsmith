@@ -8,7 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/monke/skillsmith/internal/config"
+	"github.com/monke/skillsmith/internal/installer"
 	"github.com/monke/skillsmith/internal/registry"
 )
 
@@ -328,7 +328,7 @@ func (m *Model) renderPreviewMetadata(sb *strings.Builder, bi BrowserItem) {
 	sb.WriteString(getStatusLabel(bi.Status))
 	sb.WriteString("\n")
 
-	path, _ := config.GetInstallPath(bi.Item.Name, bi.Item.Type, m.selectedTool, m.selectedScope)
+	path, _ := installer.GetInstallPath(bi.Item, m.selectedTool, m.selectedScope)
 
 	sb.WriteString(bullet)
 	sb.WriteString(dimStyle.Render("path: "))

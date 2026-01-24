@@ -121,7 +121,7 @@ func (m *Manager) Install(
 	}
 
 	// Get path for result
-	path, err := config.GetInstallPath(item.Name, item.Type, tool, scope)
+	path, err := installer.GetInstallPath(*item, tool, scope)
 	if err != nil {
 		return nil, "", fmt.Errorf("get install path: %w", err)
 	}
@@ -145,7 +145,7 @@ func (m *Manager) Uninstall(
 	}
 
 	// Get path for result
-	path, err := config.GetInstallPath(item.Name, item.Type, tool, scope)
+	path, err := installer.GetInstallPath(*item, tool, scope)
 	if err != nil {
 		return nil, "", fmt.Errorf("get install path: %w", err)
 	}

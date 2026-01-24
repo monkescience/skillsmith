@@ -4,22 +4,19 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-
-	"github.com/monke/skillsmith/internal/domain"
 )
 
-// Scope is re-exported from domain for convenience.
-type Scope = domain.Scope
+// Scope represents where to install items.
+type Scope string
 
-// Re-export constants.
 const (
-	ScopeLocal  = domain.ScopeLocal
-	ScopeGlobal = domain.ScopeGlobal
+	ScopeLocal  Scope = "local"
+	ScopeGlobal Scope = "global"
 )
 
 // AllScopes returns all supported scopes.
 func AllScopes() []Scope {
-	return domain.AllScopes()
+	return []Scope{ScopeLocal, ScopeGlobal}
 }
 
 // dirPermissions is the default permission for created directories.
@@ -40,24 +37,9 @@ type Paths struct {
 	SkillsSubdir string
 }
 
-// Tool is re-exported from domain for convenience.
-type Tool = domain.Tool
-
-const (
-	ToolOpenCode = domain.ToolOpenCode
-	ToolClaude   = domain.ToolClaude
-)
-
-// ItemType is re-exported from domain for convenience.
-type ItemType = domain.ItemType
-
-const (
-	ItemTypeAgent = domain.ItemTypeAgent
-	ItemTypeSkill = domain.ItemTypeSkill
-)
-
 // GetPaths returns the paths for the specified tool.
-func GetPaths(tool Tool) (*Paths, error) {
+// The tool parameter is a string matching registry.Tool values.
+func GetPaths(tool string) (*Paths, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
 		return nil, fmt.Errorf("get home directory: %w", err)
@@ -69,7 +51,7 @@ func GetPaths(tool Tool) (*Paths, error) {
 	}
 
 	switch tool {
-	case ToolOpenCode:
+	case "opencode":
 		return &Paths{
 			LocalDir:     filepath.Join(cwd, ".opencode"),
 			GlobalDir:    filepath.Join(homeDir, ".config", "opencode"),
@@ -77,7 +59,7 @@ func GetPaths(tool Tool) (*Paths, error) {
 			SkillsSubdir: "skills",
 		}, nil
 
-	case ToolClaude:
+	case "claude":
 		return &Paths{
 			LocalDir:     filepath.Join(cwd, ".claude"),
 			GlobalDir:    filepath.Join(homeDir, ".claude"),
@@ -92,44 +74,6 @@ func GetPaths(tool Tool) (*Paths, error) {
 			AgentsSubdir: "agents",
 			SkillsSubdir: "skills",
 		}, nil
-	}
-}
-
-// GetInstallPath returns the full path where an item should be installed.
-func GetInstallPath(itemName string, itemType ItemType, tool Tool, scope Scope) (string, error) {
-	paths, err := GetPaths(tool)
-	if err != nil {
-		return "", err
-	}
-
-	var baseDir string
-	if scope == ScopeGlobal {
-		baseDir = paths.GlobalDir
-	} else {
-		baseDir = paths.LocalDir
-	}
-
-	filename := itemName + ".md"
-
-	switch itemType {
-	case ItemTypeAgent:
-		if paths.AgentsSubdir == "" {
-			// For tools without agent subdirs (like Claude), use skills instead
-			skillDir := filepath.Join(baseDir, paths.SkillsSubdir, itemName)
-
-			return filepath.Join(skillDir, "SKILL.md"), nil
-		}
-
-		return filepath.Join(baseDir, paths.AgentsSubdir, filename), nil
-
-	case ItemTypeSkill:
-		// Skills go in skills/<name>/SKILL.md
-		skillDir := filepath.Join(baseDir, paths.SkillsSubdir, itemName)
-
-		return filepath.Join(skillDir, "SKILL.md"), nil
-
-	default:
-		return filepath.Join(baseDir, filename), nil
 	}
 }
 
