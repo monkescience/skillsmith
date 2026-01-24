@@ -24,7 +24,7 @@ func (s *EmbeddedSource) Name() string {
 
 // Load loads all items from the embedded filesystem.
 func (s *EmbeddedSource) Load() ([]Item, error) {
-	reg, err := LoadFromFS(embeddedFS, "registry")
+	reg, err := LoadFromFS(embeddedFS, "content")
 	if err != nil {
 		return nil, err
 	}

@@ -12,7 +12,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-//go:embed registry/agents/*.md registry/skills/*.md
+//go:embed content/agents/*.md content/skills/*.md
 var embeddedFS embed.FS
 
 var (
@@ -20,9 +20,9 @@ var (
 	errNoClosingDelimiter = errors.New("could not find closing frontmatter delimiter (---)")
 )
 
-// Load loads the embedded registry by scanning the registry directory.
+// Load loads the embedded registry by scanning the content directory.
 func Load() (*Registry, error) {
-	return LoadFromFS(embeddedFS, "registry")
+	return LoadFromFS(embeddedFS, "content")
 }
 
 // LoadFromFS loads a registry from a filesystem (embedded or real).
